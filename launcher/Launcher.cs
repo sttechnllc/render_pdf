@@ -74,9 +74,12 @@ static class Launcher
             if (edge == null) Process.Start(html);
             else
             {
-                string profile = Path.Combine(dir, "profile");
+                string profile = Path.Combine(dir, "app");
+                MigrateProfile(Path.Combine(dir, "profile"), profile);
+                // a private window that never signs in to a Microsoft account and never syncs
                 Process.Start(new ProcessStartInfo(edge,
                     "--app=\"" + url + "\" --user-data-dir=\"" + profile + "\" --no-first-run --no-default-browser-check " +
+                    "--disable-sync --disable-features=msImplicitSignin,msEdgeImplicitSignIn " +
                     "--window-size=1400,900 --allow-file-access-from-files") { UseShellExecute = false });
             }
 
@@ -105,6 +108,34 @@ static class Launcher
         {
             MessageBox.Show("Mark's Render PDF Editor could not start:\n" + e.Message, "Mark's Render PDF Editor", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    // Older versions let Edge sign the editor window in to the Windows Microsoft account. Move the user's own data
+    // (saved signatures, auto-fill profiles, settings = "Local Storage") into a fresh, never-signed-in window storage
+    // and delete the old signed-in one.
+    static void MigrateProfile(string oldProfile, string newProfile)
+    {
+        if (!Directory.Exists(oldProfile)) return;
+        try
+        {
+            string from = Path.Combine(oldProfile, "Default", "Local Storage"), to = Path.Combine(newProfile, "Default", "Local Storage");
+            if (Directory.Exists(from) && !Directory.Exists(to)) CopyDir(from, to);
+            DeleteDir(oldProfile);
+        }
+        catch { /* old window still open – try again next start */ }
+    }
+    static void DeleteDir(string path)
+    {
+        // Edge leaves some read-only files; clear the flag first, keep going past anything still locked
+        foreach (var f in Directory.GetFiles(path, "*", SearchOption.AllDirectories))
+            try { File.SetAttributes(f, FileAttributes.Normal); File.Delete(f); } catch { }
+        try { Directory.Delete(path, true); } catch { }
+    }
+    static void CopyDir(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var f in Directory.GetFiles(from)) File.Copy(f, Path.Combine(to, Path.GetFileName(f)), true);
+        foreach (var d in Directory.GetDirectories(from)) CopyDir(d, Path.Combine(to, Path.GetFileName(d)));
     }
 
     static void StartServer(string dir)
