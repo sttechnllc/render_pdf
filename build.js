@@ -27,7 +27,7 @@ if (process.platform === 'win32' && fs.existsSync(csc)) {
   fs.writeFileSync(ver, `static class AppInfo { public const string Version = "${require('./package.json').version}"; }`);
   require('child_process').execFileSync(csc, ['/nologo', '/target:winexe', '/optimize+',
     `/out:${exe}`, `/win32icon:${path.join(__dirname, 'launcher', 'icon.ico')}`,
-    `/resource:${gz},PDFEditor.html.gz`, '/r:System.Windows.Forms.dll',
+    `/resource:${gz},PDFEditor.html.gz`, `/resource:${path.join(__dirname, 'launcher', 'icon-256.png')},logo.png`, '/r:System.Windows.Forms.dll', '/r:System.Drawing.dll',
     // Windows Runtime (for the built-in OCR engine)
     ...['Foundation', 'Media', 'Graphics', 'Storage'].map(n => `/r:C:/Windows/System32/WinMetadata/Windows.${n}.winmd`),
     '/r:C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Runtime.dll',
