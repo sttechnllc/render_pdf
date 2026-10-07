@@ -22,6 +22,7 @@
 - **`MarksRenderPDFEditor-Setup.exe`**: installs it (Start menu + desktop shortcut, "Open with" for PDFs). No admin rights needed; remove it any time in *Settings → Apps*.
 - **`MarksRenderPDFEditor.exe`**: the portable version. Nothing to install; run it from anywhere, even a USB stick.
 - `.zip`: the portable version zipped, if you need to email it.
+- **Mac:** `MarksRenderPDFEditor-mac.dmg`: open it and drag the app onto Applications. First launch: *System Settings → Privacy & Security → Open Anyway* (one time).
 
 IT/scripted installs: `MarksRenderPDFEditor-Setup.exe --quiet` (silent), uninstall with `--uninstall --quiet`.
 
