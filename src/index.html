@@ -10,51 +10,62 @@
 <body class="tool-select">
 
 <header id="bar">
-  <div class="grp brand"><img src="../launcher/icon-256.png" alt=""><span>Mark's Render<br><b>PDF Editor</b></span></div>
-  <div class="grp">
-    <button id="bOpen" class="pri" title="Open a PDF (Ctrl+O)">📂 Open</button>
-    <button id="bAdd" title="Add more PDFs or images to the end (merge)">➕ Add files</button>
-    <button id="bSave" class="pri" title="Save (Ctrl+S)">💾 Save</button>
-    <button id="bSaveAs" title="Save a copy under a new name or location (Ctrl+Shift+S)">📄 Save As</button>
-    <button id="bPrint" title="Print (Ctrl+P)">🖨 Print</button>
-    <button id="bFill" title="Auto-fill name, address, DOB… from a saved profile">👤 Auto-fill</button>
-    <button id="bFind" title="Advanced search (Ctrl+F)">🔍 Search</button>
-    <button id="bTools" class="tools-btn" title="Shrink, convert, extract images, OCR, split, page numbers, compare, batch…">🧰 Tools</button>
-    <button id="bAbout" title="About (F1)">ⓘ</button>
+  <div class="row1">
+    <div class="brand"><img src="../launcher/icon-256.png" alt=""><span>Mark's Render<br><b>PDF Editor</b></span></div>
+    <div class="grp">
+      <button id="bOpen" class="pri" title="Open a PDF (Ctrl+O)">📂 <span class="bl">Open</span></button>
+      <button id="bAdd" title="Add more PDFs or images to the end (merge)">➕ <span class="bl">Add files</span></button>
+      <span class="split"><button id="bSave" class="pri" title="Save (Ctrl+S)">💾 <span class="bl">Save</span></button><button id="bSaveAs" class="pri caret" title="Save As… – save a copy under a new name (Ctrl+Shift+S)">▾</button></span>
+      <button id="bPrint" title="Print (Ctrl+P)">🖨 <span class="bl">Print</span></button>
+    </div>
+    <div class="grp">
+      <button id="bUndo" title="Undo (Ctrl+Z)">↶</button>
+      <button id="bRedo" title="Redo (Ctrl+Y)">↷</button>
+    </div>
+    <span class="sp"></span>
+    <div class="grp">
+      <button id="bFind" title="Advanced search (Ctrl+F)">🔍 <span class="bl">Search</span></button>
+      <button id="bFill" title="Auto-fill name, address, DOB… from a saved profile">👤 <span class="bl">Auto-fill</span></button>
+      <button id="bTools" class="tools-btn" title="Shrink, convert, extract images, OCR, split, ZIP, page numbers, compare, batch…">🧰 <span class="bl">Tools</span></button>
+      <button id="bAbout" title="About (F1)">ⓘ</button>
+    </div>
   </div>
-  <div class="grp">
-    <button id="bUndo" title="Undo (Ctrl+Z)">↶</button>
-    <button id="bRedo" title="Redo (Ctrl+Y)">↷</button>
-  </div>
-  <div class="grp tools">
-    <button data-tool="select" title="Select, move and resize things (Esc) [V / Esc]">🖱 Select</button>
-    <button data-tool="area" title="Drag a box: copy text (even from scans), copy as image, move or duplicate that part [A]">⬚ Select area</button>
-    <button data-tool="edittext" title="Click any existing text in the PDF to change it [E]">✎ Edit text</button>
-    <button data-tool="text" title="Click anywhere to type new text [T]">𝐓 Add text</button>
-    <button id="bSign" title="Draw, type or upload a signature">✍ Sign</button>
-    <button id="bImage" title="Insert a picture">🖼 Image</button>
-    <button data-tool="highlight" title="Drag over text to highlight [H]">🖍 Highlight</button>
-    <button data-tool="whiteout" title="Drag to cover/erase something [W]">⬜ Whiteout</button>
-    <button data-tool="draw" title="Draw freehand [D]">✏ Draw</button>
-    <button data-tool="check" title="Click to place a check mark [C]">✔</button>
-    <button data-tool="cross" title="Click to place an X [X]">✘</button>
-    <button data-tool="date" title="Click to place today's date">📅 Date</button>
-  </div>
-  <div class="grp nav">
-    <button id="navFirst" title="First page (Home)">⏮</button>
-    <button id="navPrev" title="Previous page (Page Up)">◀</button>
-    <input id="navPage" title="Type a page number and press Enter (Ctrl+G)" inputmode="numeric"><span id="navTotal"></span>
-    <button id="navNext" title="Next page (Page Down)">▶</button>
-    <button id="navLast" title="Last page (End)">⏭</button>
-  </div>
-  <div class="grp">
-    <button id="bZoomOut" title="Zoom out (Ctrl −)">−</button>
-    <select id="zoomSel" title="Zoom (Ctrl + mouse wheel)">
-      <option value="width">Fit width</option><option value="page">Whole page</option>
-      <option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option>
-      <option value="150">150%</option><option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
-    </select>
-    <button id="bZoomIn" title="Zoom in (Ctrl +)">+</button>
+  <div class="row2">
+    <button id="bSide" title="Show / hide the side panel">☰</button>
+    <div class="grp tools">
+      <button data-tool="select" title="Select, move and resize things – double-click text to edit [V / Esc]">🖱 <span class="bl">Select</span></button>
+      <button data-tool="area" title="Drag a box: copy text (even from scans), copy as image, move or duplicate that part [A]">⬚ <span class="bl">Area</span></button>
+      <i class="sep"></i>
+      <button data-tool="edittext" class="hero" title="Click any text in the PDF to change it [E]">✎ <span class="bl">Edit text</span></button>
+      <button data-tool="text" title="Click anywhere to type new text [T]">𝐓 <span class="bl">Add text</span></button>
+      <i class="sep"></i>
+      <button id="bSign" title="Draw, type or upload a signature [S]">✍ <span class="bl">Sign</span></button>
+      <button id="bImage" title="Insert a picture">🖼 <span class="bl">Image</span></button>
+      <button data-tool="date" title="Click to place today's date">📅 <span class="bl">Date</span></button>
+      <button data-tool="check" title="Click to place a check mark [C]">✔</button>
+      <button data-tool="cross" title="Click to place an X [X]">✘</button>
+      <i class="sep"></i>
+      <button data-tool="highlight" title="Drag over text to highlight [H]">🖍 <span class="bl">Highlight</span></button>
+      <button data-tool="whiteout" title="Drag to cover/erase something [W]">⬜ <span class="bl">Whiteout</span></button>
+      <button data-tool="draw" title="Draw freehand [D]">✏ <span class="bl">Draw</span></button>
+    </div>
+    <span class="sp"></span>
+    <div class="grp nav">
+      <button id="navFirst" title="First page (Home)">⏮</button>
+      <button id="navPrev" title="Previous page (Page Up)">◀</button>
+      <input id="navPage" title="Type a page number and press Enter (Ctrl+G)" inputmode="numeric"><span id="navTotal"></span>
+      <button id="navNext" title="Next page (Page Down)">▶</button>
+      <button id="navLast" title="Last page (End)">⏭</button>
+    </div>
+    <div class="grp">
+      <button id="bZoomOut" title="Zoom out (Ctrl −)">−</button>
+      <select id="zoomSel" title="Zoom (Ctrl + mouse wheel)">
+        <option value="width">Fit width</option><option value="page">Whole page</option>
+        <option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option>
+        <option value="150">150%</option><option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
+      </select>
+      <button id="bZoomIn" title="Zoom in (Ctrl +)">+</button>
+    </div>
   </div>
 </header>
 

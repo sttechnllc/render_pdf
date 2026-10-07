@@ -701,6 +701,7 @@ $('#pages').addEventListener('pointerdown', ev => {
       if (moved) return showEditMenu(p, w, box());
       const b = await blockAt(p, s.x, s.y);
       if (b) editBlock(p, b, { x: ev.clientX, y: ev.clientY });
+      else editPictureTextAt(p, s, { x: ev.clientX, y: ev.clientY });
     });
     return;
   }
@@ -827,7 +828,10 @@ function textLines(a) {
 const blockCache = new WeakMap();
 async function pageBlocks(p) {
   const items = await pageItems(p);
-  if (blockCache.has(items)) return blockCache.get(items);
+  if (!blockCache.has(items)) blockCache.set(items, blocksFrom(items));
+  return blockCache.get(items);
+}
+function blocksFrom(items) {
   const runs = []; // 1) lines: pieces on the same baseline, next to each other
   for (const it of items) {
     if (it.rot || !it.str) continue;
@@ -856,11 +860,40 @@ async function pageBlocks(p) {
     b.text = L.map((l, i) => { const s = l.str.replace(/\s+$/, ''); return i === last ? s : full(l) ? (/-$/.test(s) ? s : s + ' ') : s + '\n'; }).join('');
     b.justify = L.length > 2 && L.slice(0, last).every(l => Math.abs(l.x + l.w - b.x1) < fh * 0.3);
   }
-  blockCache.set(items, blocks);
   return blocks;
 }
-async function blockAt(p, x, y) {
-  return (await pageBlocks(p)).find(b => x >= b.x0 - 2 && x <= b.x1 + 2 && y >= b.y0 - 1 && y <= b.y1 + 1) || null;
+const hitBlock = (blocks, x, y) => blocks.find(b => x >= b.x0 - 2 && x <= b.x1 + 2 && y >= b.y0 - 1 && y <= b.y1 + 1) || null;
+async function blockAt(p, x, y) { return hitBlock(await pageBlocks(p), x, y); }
+
+// Text that is really a picture (scans, logos, titles drawn as outlines): read it with OCR, then edit it like text
+const ocrPageCache = new Map();
+function ocrItems(p) {
+  const key = p.id + '|' + p.rot;
+  if (!ocrPageCache.has(key)) ocrPageCache.set(key, (async () => {
+    const d = dims(p), lines = await ocrRegion(p, { x: 0, y: 0, w: d.w, h: d.h });
+    return lines.map(l => ({ str: l.text, x: l.x, y: l.y, w: l.w, h: l.h, fh: l.h, base: l.y + l.h * 0.8, font: '', fam: '' }));
+  })().catch(e => { ocrPageCache.delete(key); throw e; }));
+  if (ocrPageCache.size > 20) ocrPageCache.delete(ocrPageCache.keys().next().value);
+  return ocrPageCache.get(key);
+}
+function inkAt(p, x, y) { // is anything printed around this point?
+  try {
+    const c = pageEl(p).querySelector('canvas'), k = c.width / dims(p).w, r = 6 * k;
+    const d = c.getContext('2d', { willReadFrequently: true }).getImageData(Math.max(0, x * k - r), Math.max(0, y * k - r), r * 2, r * 2).data;
+    let lo = 765, hi = 0; for (let i = 0; i < d.length; i += 4) { const l = d[i] + d[i + 1] + d[i + 2]; lo = Math.min(lo, l); hi = Math.max(hi, l); }
+    return hi - lo > 120;
+  } catch { return true; }
+}
+async function editPictureTextAt(p, s, at) {
+  if (!inkAt(p, s.x, s.y)) return;
+  if (!helperUrl('ocr') && !NATIVE) return toast('This text is part of a picture. The desktop app can read and edit it (it uses OCR).', 5000);
+  toast('This text is a picture – reading it…', 8000);
+  let blocks;
+  try { blocks = blocksFrom(await ocrItems(p)); } catch (e) { return toast(e.message, 5000); }
+  const b = hitBlock(blocks, s.x, s.y);
+  if (!b) return toast('No text found there.');
+  b.picture = true; toast('Edit away – the picture text is covered by your version.', 3000);
+  editBlock(p, b, at);
 }
 
 // ---- hover: show what will become editable ----
@@ -912,7 +945,7 @@ async function editBlock(p, b, at) {
   const before = p.erase || [];
   p.erase = [...before, ...boxes];
   let hits = [], pdfFont = null, baseFont = '';
-  if (p.src >= 0) try {
+  if (p.src >= 0 && !b.picture) try {
     const res = await erasedPage(p);
     hits = res.hits.slice(before.length);
     const i = hits.findIndex(h => h > 0);
@@ -1982,7 +2015,15 @@ function openSearch() {
 $('#bFind').onclick = openSearch;
 
 /* ---------------- side panel tabs + contents (index) ---------------- */
+function setSide(open) {
+  $('#side').classList.toggle('collapsed', !open); $('#bSide').classList.toggle('on', open);
+  try { localStorage.setItem('pdfeditor.side', open ? '1' : '0'); } catch { }
+  if (S.pages.length && !S.zoomed) setTimeout(() => fitWidth(), 30);
+}
+$('#bSide').onclick = () => setSide($('#side').classList.contains('collapsed'));
+try { setSide(localStorage.getItem('pdfeditor.side') !== '0'); } catch { setSide(true); }
 function showSideTab(t) {
+  if ($('#side').classList.contains('collapsed')) setSide(true);
   $$('#sideTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   $$('.pane').forEach(p => p.hidden = p.dataset.t !== t);
   $('#side').classList.toggle('wide', t !== 'pages');

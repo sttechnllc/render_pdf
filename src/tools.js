@@ -4,7 +4,7 @@
 
 const APP = {
   name: "Mark's Render PDF Editor",
-  version: '1.1.0',
+  version: '1.1.1',
   github: 'https://github.com/sttechnllc/render_pdf',
   coffee: 'https://www.buymeacoffee.com/nordberg',
 };

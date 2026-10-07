@@ -1,6 +1,6 @@
 {
   "name": "marks-render-pdf-editor",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A free, portable, offline PDF editor for Windows - no install, no account, nothing uploaded.",
   "private": true,
   "license": "MIT",

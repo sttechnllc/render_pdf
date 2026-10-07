@@ -14,7 +14,7 @@ input[type=color]{width:34px;height:28px;padding:1px;vertical-align:middle}
 .sp{flex:1}
 .muted{color:var(--muted)}
 
-#bar{display:flex;flex-wrap:wrap;gap:8px;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--line);align-items:center}
+#bar{display:flex;flex-direction:column;background:var(--panel);border-bottom:1px solid var(--line)}
 .grp{display:flex;gap:4px;align-items:center;padding-right:8px;border-right:1px solid var(--line)}
 .grp:last-child{border-right:0}
 #zoomLbl{min-width:46px;text-align:center;color:var(--muted)}
@@ -222,3 +222,26 @@ input.ff[type=checkbox],input.ff[type=radio]{accent-color:var(--accent)}
 .band.editsel{border:2px dashed #dc2626;background:#dc262610}
 #editMenu{position:absolute;z-index:30;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 6px 20px #0003}
 #editMenu button{padding:5px 10px;font-size:13px}
+
+/* two-row header */
+#bar .row1,#bar .row2{display:flex;align-items:center;gap:8px;padding:6px 10px;white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+#bar .row1::-webkit-scrollbar,#bar .row2::-webkit-scrollbar{display:none}
+#bar .row2{background:#f8f9fb;border-top:1px solid var(--line);padding:5px 10px}
+#bar .grp{flex:none}
+#bar .row1 .grp:nth-last-child(1),#bar .row2 .grp:last-child{border-right:0;padding-right:0}
+.brand{display:flex;align-items:center;flex:none;padding-right:6px}
+.split{display:inline-flex}
+.split #bSave{border-radius:7px 0 0 7px}
+.split .caret{border-radius:0 7px 7px 0;padding:6px 7px;border-left:1px solid #ffffff66}
+.tools .sep{display:inline-block;width:1px;height:22px;background:var(--line);margin:0 4px}
+.tools .hero{font-weight:600}
+#bSide{flex:none}
+#side.collapsed{display:none}
+@media (max-width:1500px){ .row2 .bl{display:none} .row2 .hero .bl{display:inline} }
+@media (max-width:1050px){ .row1 .bl{display:none} .brand span{display:none} }
+
+/* context bar: one line; the hint shortens with … instead of wrapping */
+#props{flex-wrap:nowrap;white-space:nowrap;overflow:hidden}
+#hint{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#props .sp{display:none}
+#props label,#props button,#pageLbl{flex:none}
