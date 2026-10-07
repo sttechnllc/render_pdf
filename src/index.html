@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mark's Render PDF Editor</title>
+<link rel="icon" type="image/png" href="../launcher/icon-256.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="tool-select">
+
+<header id="bar">
+  <div class="grp brand"><img src="../launcher/icon-256.png" alt=""><span>Mark's Render<br><b>PDF Editor</b></span></div>
+  <div class="grp">
+    <button id="bOpen" class="pri" title="Open a PDF (Ctrl+O)">📂 Open</button>
+    <button id="bAdd" title="Add more PDFs or images to the end (merge)">➕ Add files</button>
+    <button id="bSave" class="pri" title="Save (Ctrl+S)">💾 Save</button>
+    <button id="bSaveAs" title="Save a copy under a new name or location (Ctrl+Shift+S)">📄 Save As</button>
+    <button id="bPrint" title="Print (Ctrl+P)">🖨 Print</button>
+    <button id="bFill" title="Auto-fill name, address, DOB… from a saved profile">👤 Auto-fill</button>
+    <button id="bFind" title="Advanced search (Ctrl+F)">🔍 Search</button>
+    <button id="bTools" class="tools-btn" title="Shrink, convert, extract images, OCR, split, page numbers, compare, batch…">🧰 Tools</button>
+    <button id="bAbout" title="About (F1)">ⓘ</button>
+  </div>
+  <div class="grp">
+    <button id="bUndo" title="Undo (Ctrl+Z)">↶</button>
+    <button id="bRedo" title="Redo (Ctrl+Y)">↷</button>
+  </div>
+  <div class="grp tools">
+    <button data-tool="select" title="Select, move and resize things (Esc) [V / Esc]">🖱 Select</button>
+    <button data-tool="area" title="Drag a box: copy text (even from scans), copy as image, move or duplicate that part [A]">⬚ Select area</button>
+    <button data-tool="edittext" title="Click any existing text in the PDF to change it [E]">✎ Edit text</button>
+    <button data-tool="text" title="Click anywhere to type new text [T]">𝐓 Add text</button>
+    <button id="bSign" title="Draw, type or upload a signature">✍ Sign</button>
+    <button id="bImage" title="Insert a picture">🖼 Image</button>
+    <button data-tool="highlight" title="Drag over text to highlight [H]">🖍 Highlight</button>
+    <button data-tool="whiteout" title="Drag to cover/erase something [W]">⬜ Whiteout</button>
+    <button data-tool="draw" title="Draw freehand [D]">✏ Draw</button>
+    <button data-tool="check" title="Click to place a check mark [C]">✔</button>
+    <button data-tool="cross" title="Click to place an X [X]">✘</button>
+    <button data-tool="date" title="Click to place today's date">📅 Date</button>
+  </div>
+  <div class="grp nav">
+    <button id="navFirst" title="First page (Home)">⏮</button>
+    <button id="navPrev" title="Previous page (Page Up)">◀</button>
+    <input id="navPage" title="Type a page number and press Enter (Ctrl+G)" inputmode="numeric"><span id="navTotal"></span>
+    <button id="navNext" title="Next page (Page Down)">▶</button>
+    <button id="navLast" title="Last page (End)">⏭</button>
+  </div>
+  <div class="grp">
+    <button id="bZoomOut" title="Zoom out (Ctrl −)">−</button>
+    <select id="zoomSel" title="Zoom (Ctrl + mouse wheel)">
+      <option value="width">Fit width</option><option value="page">Whole page</option>
+      <option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option>
+      <option value="150">150%</option><option value="200">200%</option><option value="300">300%</option><option value="400">400%</option>
+    </select>
+    <button id="bZoomIn" title="Zoom in (Ctrl +)">+</button>
+  </div>
+</header>
+
+<div id="props">
+  <span id="hint">Open a PDF to get started.</span>
+  <span class="sp"></span>
+  <label>Font <select id="pFont"><option>Helvetica</option><option>Times</option><option>Courier</option></select></label>
+  <label>Size <input id="pSize" type="number" min="4" max="200" value="14"></label>
+  <button id="pBold" title="Bold"><b>B</b></button>
+  <label>Color <input id="pColor" type="color" value="#000000"></label>
+  <label>Line <input id="pLw" type="number" min="0.5" max="20" step="0.5" value="2"></label>
+  <button id="pAll" title="Put a copy of this item on every page (initials, stamps…)">📑 All pages</button>
+  <button id="pDel" title="Delete selected item (Del)">🗑 Delete item</button>
+  <span id="pageLbl"></span>
+</div>
+
+<main>
+  <aside id="side">
+    <div id="sideTabs"><button data-t="pages" class="on">📄 Pages</button><button data-t="contents">📑 Contents</button><button data-t="search">🔍 Search</button></div>
+    <div class="pane" data-t="pages">
+    <div class="sidehead">
+      <b>Pages</b>
+      <span class="sp"></span>
+      <button id="sRotL" title="Rotate selected pages left">⟲</button>
+      <button id="sRotR" title="Rotate selected pages right">⟳</button>
+      <button id="sDel" title="Delete selected pages (Del)">🗑</button>
+      <button id="sBlank" title="Insert a blank page after the current one">＋▯</button>
+      <button id="sExtract" title="Save selected pages as a new PDF">⤓</button>
+    </div>
+    <div class="sidetip">Drag to reorder · Ctrl/Shift-click to select · drop files here to insert</div>
+    <div id="thumbs"></div>
+    </div>
+    <div class="pane" data-t="contents" hidden>
+      <div class="sidetip">Bookmarks of the PDF – or, if it has none, its headings. Click to jump.</div>
+      <div id="tocList"></div>
+    </div>
+    <div class="pane" data-t="search" hidden>
+      <div class="sbox">
+        <div class="row tight"><input id="sQ" placeholder="Search… (Enter = next, Shift+Enter = previous)" autocomplete="off"><button id="sClear" title="Clear">✕</button></div>
+        <div class="row tight">
+          <select id="sMode" title="How to match">
+            <option value="phrase">Exact phrase</option><option value="all">All words (same page)</option>
+            <option value="any">Any of the words</option><option value="regex">Pattern (regex)</option>
+          </select>
+          <select id="sScope" title="Where to look"><option value="all">All pages</option><option value="current">This page</option><option value="selected">Selected pages</option><option value="range">Page range…</option></select>
+          <input id="sRange" placeholder="e.g. 1-5, 9" hidden>
+        </div>
+        <div class="row tight opts">
+          <label><input type="checkbox" id="sCase"> Match case</label>
+          <label><input type="checkbox" id="sWord"> Whole words</label>
+          <label title="é = e, ü = u…"><input type="checkbox" id="sAccent" checked> Ignore accents</label>
+          <label title="Also search text you added and form answers"><input type="checkbox" id="sAnn" checked> Added text</label>
+        </div>
+        <div id="sPresets" class="row tight wrap"><span class="muted">Find all:</span></div>
+        <div class="row tight"><span id="sStatus" class="muted"></span><span class="sp"></span><button id="sPrev" title="Previous (Shift+F3)">▲</button><span id="sPos"></span><button id="sNext" title="Next (F3)">▼</button></div>
+        <div class="row tight wrap">
+          <button id="sHl" title="Highlight every match">🖍 Highlight all</button>
+          <button id="sRedact" title="Permanently delete every match and black it out">⬛ Redact all</button>
+          <button id="sCopy" title="Copy all matches with page numbers">📋 Copy list</button>
+        </div>
+        <div class="row tight"><input id="sRepl" placeholder="Replace with…"><button id="sReplace" title="Replace every match (original text is really deleted)">Replace all</button></div>
+      </div>
+      <div id="sResults"></div>
+    </div>
+  </aside>
+  <section id="view">
+    <div id="empty">
+      <div class="drop">
+                <img class="logo" src="../launcher/icon-256.png" alt=""><h1>Mark's Render PDF Editor</h1>
+        <p>Drop a PDF here</p>
+        <p>or</p>
+        <button id="eOpen" class="pri big-btn">Open a PDF</button>
+        <button id="eBlank" class="big-btn">Start with a blank page</button>
+        <ul>
+          <li><b>Edit text</b> – click any text in the PDF and retype it</li>
+          <li><b>Sign</b> – draw, type or upload your signature once, reuse it forever</li>
+          <li><b>Pages</b> – drag thumbnails to reorder, rotate, delete, extract</li>
+          <li><b>Merge</b> – drop more PDFs or images onto the page list</li>
+        </ul>
+        <p class="muted">Everything happens on this computer. Nothing is uploaded.</p>
+      </div>
+    </div>
+    <div id="pages"></div>
+  </section>
+</main>
+
+<div id="modal" hidden>
+  <div class="dlg">
+    <h2>Signature</h2>
+    <div id="savedWrap"><div class="lbl">Saved signatures – click one to use it</div><div id="savedSigs"></div></div>
+    <div class="tabs">
+      <button data-tab="draw" class="on">Draw</button>
+      <button data-tab="type">Type</button>
+      <button data-tab="upload">Upload image</button>
+    </div>
+    <div class="tab" data-tab="draw">
+      <canvas id="sigCanvas" width="640" height="200"></canvas>
+      <div class="row">Ink:
+        <button class="ink on" data-c="#000000" style="background:#000"></button>
+        <button class="ink" data-c="#1a3fb0" style="background:#1a3fb0"></button>
+        <span class="sp"></span><button id="sigClear">Clear</button>
+      </div>
+    </div>
+    <div class="tab" data-tab="type" hidden>
+      <input id="sigText" placeholder="Type your name" autocomplete="name">
+      <div id="sigFonts"></div>
+    </div>
+    <div class="tab" data-tab="upload" hidden>
+      <button id="sigPick">Choose image…</button>
+      <label><input type="checkbox" id="sigTransp" checked> Remove white background</label>
+      <div class="prev"><img id="sigUp" alt=""></div>
+    </div>
+    <label class="row"><input type="checkbox" id="sigRemember" checked> Remember this signature on this computer</label>
+    <div class="btns">
+      <button id="sigCancel">Cancel</button>
+      <button id="sigUse" class="pri">Use signature</button>
+    </div>
+  </div>
+</div>
+
+<div id="areaMenu" hidden>
+  <button data-a="text" title="Copy the text in the box (uses OCR automatically for scanned pages)">📋 Copy text</button>
+  <button data-a="ocr" title="Force OCR (read text from the picture)">🔤 OCR</button>
+  <button data-a="image" title="Copy the area as a picture">🖼 Copy image</button>
+  <button data-a="move" id="amMove" title="Cut this part out and drag it somewhere else">✥ Move</button>
+  <button data-a="dup" id="amDup" title="Make a movable copy of this part">⧉ Duplicate</button>
+  <button data-a="editable" title="Scanned page? Turn the text in the box into editable text">✎ Make editable</button>
+</div>
+
+<div id="pmodal" hidden>
+  <div class="dlg">
+    <h2>Auto-fill profiles</h2>
+    <div class="row"><select id="profSel"></select><button id="profNew">＋ New profile</button><button id="profDel">🗑</button><span class="sp"></span><button id="profLock"></button></div>
+    <label class="row">Profile name <input id="profLabel" placeholder="e.g. Me, Spouse, Business"></label>
+    <div id="profGrid"></div>
+    <p class="muted">Stored only on this computer. Fills matching form fields, or types next to labels like “Name:” on plain PDFs.</p>
+    <div class="btns"><button id="profClose">Close</button><button id="profSave">Save</button><button id="profFill" class="pri">Fill this PDF</button></div>
+  </div>
+</div>
+
+<div id="tmodal" hidden>
+  <div class="dlg tdlg">
+    <h2 id="tTitle">🧰 Tools</h2>
+    <div id="tBody"></div>
+    <div id="tProg" hidden><div class="bar"><i></i></div><span></span></div>
+    <div id="tMsg"></div>
+    <div class="btns"><button id="tBack">← All tools</button><span class="sp"></span><button id="tClose">Close</button><button id="tRun" class="pri">▶ Run</button></div>
+  </div>
+</div>
+
+<div id="amodal" hidden>
+  <div class="dlg adlg">
+    <img src="../launcher/icon-256.png" alt="" class="alogo">
+    <h2>Mark's Render PDF Editor</h2>
+    <p id="aVer" class="muted"></p>
+    <p>A free, portable PDF editor. No install, no account – everything stays on your computer.</p>
+    <p class="row" style="justify-content:center">
+      <a id="aCoffee" class="coffee" href="#" hidden>☕ Buy me a coffee</a>
+      <a id="aGit" class="gh" href="#" hidden>⭐ GitHub – updates &amp; source</a>
+    </p>
+    <p class="muted small">Built with pdf.js (Apache-2.0) and pdf-lib (MIT). Licensed under MIT.</p>
+    <div class="btns"><button id="aClose" class="pri">Close</button></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="fOpen" accept=".pdf,application/pdf,image/*" hidden>
+<input type="file" id="fAdd" accept=".pdf,application/pdf,image/*" multiple hidden>
+<input type="file" id="fImg" accept="image/*" hidden>
+<input type="file" id="fSig" accept="image/*" hidden>
+
+<script src="../node_modules/pdfjs-dist/build/pdf.min.js"></script>
+<script src="../node_modules/pdfjs-dist/build/pdf.worker.min.js" data-worker></script>
+<script src="../node_modules/pdf-lib/dist/pdf-lib.min.js"></script>
+<script src="../node_modules/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
+<script src="app.js"></script>
+<script src="tools.js"></script>
+</body>
+</html>

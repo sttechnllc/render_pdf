@@ -1,0 +1,61 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write # needed only to publish the release
+    steps:
+      # actions are pinned to exact commits so a moved tag can't change what builds the exe
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (HTML + native launcher)
+        run: node build.js
+        env:
+          CI: "true"
+
+      - name: Package (plain file names + zip + checksums)
+        shell: pwsh
+        run: |
+          Copy-Item "dist/Mark's Render PDF Editor.exe" "dist/MarksRenderPDFEditor.exe"
+          Compress-Archive -Path "dist/MarksRenderPDFEditor.exe" -DestinationPath "dist/MarksRenderPDFEditor-windows.zip" -Force
+          Get-FileHash dist/MarksRenderPDFEditor.exe, dist/MarksRenderPDFEditor-windows.zip, dist/PDFEditor.html -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content dist/SHA256SUMS.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: marks-render-pdf-editor
+          path: |
+            dist/MarksRenderPDFEditor.exe
+            dist/MarksRenderPDFEditor-windows.zip
+            dist/PDFEditor.html
+            dist/SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/MarksRenderPDFEditor.exe
+            dist/MarksRenderPDFEditor-windows.zip
+            dist/PDFEditor.html
+            dist/SHA256SUMS.txt

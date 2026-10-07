@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output (published via GitHub Releases)
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Scratch / temp files
+scratch/
+tmp/
+*.tmp
+*.bak
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor folders
+.vscode/
+.idea/
+
+# Note: launcher/icon-256.png is intentionally tracked (used by the README and build).
