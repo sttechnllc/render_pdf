@@ -32,7 +32,7 @@ if (process.platform === 'win32' && fs.existsSync(csc)) {
     ...['Foundation', 'Media', 'Graphics', 'Storage'].map(n => `/r:C:/Windows/System32/WinMetadata/Windows.${n}.winmd`),
     '/r:C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Runtime.dll',
     '/r:C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Runtime.WindowsRuntime.dll',
-    path.join(__dirname, 'launcher', 'Launcher.cs'), path.join(__dirname, 'launcher', 'Setup.cs'), ver], { stdio: 'inherit' });
+    path.join(__dirname, 'launcher', 'Launcher.cs'), path.join(__dirname, 'launcher', 'Setup.cs'), path.join(__dirname, 'launcher', 'Taskbar.cs'), ver], { stdio: 'inherit' });
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log('Built', exe, (fs.statSync(exe).size / 1048576).toFixed(2) + ' MB');
 } else if (process.env.CI) throw new Error('C# compiler not found: ' + csc);

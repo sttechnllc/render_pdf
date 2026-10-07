@@ -81,6 +81,10 @@ static class Launcher
                     "--app=\"" + url + "\" --user-data-dir=\"" + profile + "\" --no-first-run --no-default-browser-check " +
                     "--disable-sync --disable-features=msImplicitSignin,msEdgeImplicitSignIn " +
                     "--window-size=1400,900 --allow-file-access-from-files") { UseShellExecute = false });
+                // own taskbar button + icon; "Pin to taskbar" pins this program, not Edge
+                string self = Application.ExecutablePath, appName = "Mark's Render PDF Editor";
+                if (isServer) { var tg = new Thread(() => Taskbar.TagEditorWindows(self, appName, int.MaxValue)); tg.IsBackground = true; tg.Start(); }
+                else Taskbar.TagEditorWindows(self, appName, 25);
             }
 
             // the hand-over copy of the PDF is only needed while the window opens – don't leave it on disk
