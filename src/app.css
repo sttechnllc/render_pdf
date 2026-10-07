@@ -52,9 +52,6 @@ main{flex:1;display:flex;min-height:0}
 .tl{display:none;z-index:1}
 .al{z-index:2;pointer-events:none}
 .al>*{pointer-events:auto}
-.tool-edittext .tl{display:block}
-.ts{position:absolute;cursor:text;border-radius:2px}
-.ts:hover{background:#2563eb22;outline:1px solid #2563eb88}
 .tool-text .page,.tool-place .page,.tool-highlight .page,.tool-whiteout .page,.tool-draw .page,.tool-check .page,.tool-cross .page,.tool-date .page{cursor:crosshair}
 .tool-draw .al>*,.tool-highlight .al>*,.tool-whiteout .al>*{pointer-events:none}
 
@@ -216,3 +213,12 @@ input.ff[type=checkbox],input.ff[type=radio]{accent-color:var(--accent)}
 .ztable button{padding:2px 8px;font-size:12px}
 
 .textout{width:100%;height:300px;font:13px/1.4 Consolas,monospace;padding:8px;border:1px solid var(--line);border-radius:8px}
+
+/* editing existing text */
+.hoverblock{position:absolute;z-index:3;pointer-events:none;border-radius:3px;background:#2563eb10;outline:2px solid #2563eb66;outline-offset:1px}
+.tool-edittext .page{cursor:text}
+.an.text.editing{outline:2px solid #16a34a;outline-offset:2px;background:#ffffffee;cursor:text}
+.an.text>div{white-space:pre}
+.band.editsel{border:2px dashed #dc2626;background:#dc262610}
+#editMenu{position:absolute;z-index:30;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 6px 20px #0003}
+#editMenu button{padding:5px 10px;font-size:13px}

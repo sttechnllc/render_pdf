@@ -48,7 +48,7 @@ const FONTS = {
 
 const HINTS = {
   select: 'Click an item to select it. Drag to move, corner to resize, double-click text to edit. Press ? for shortcuts.',
-  edittext: 'Click any text in the PDF to change it.',
+  edittext: 'Click any text to edit it (the cursor goes where you click). Drag across text to delete it.',
   text: 'Click anywhere on a page and start typing.',
   place: 'Click on the page where it should go. (Esc to cancel)',
   highlight: 'Drag across the text you want to highlight.',
@@ -300,43 +300,9 @@ async function paintPage(w) {
     w._task = null;
     if (stale()) return;
     buildFormLayer(w, p, pg);
-    if (S.tool === 'edittext') buildTextLayer(w, p, pg);
   }
   w.querySelector('canvas').replaceWith(c);
   drawSearchMarks(w, p);
-}
-
-// Invisible clickable boxes over the existing text, used by the "Edit text" tool
-async function buildTextLayer(w, p, pg) {
-  if (w._tl) return; w._tl = true;
-  const vp = pg.getViewport({ scale: 1, rotation: totalRot(p) });
-  const tc = await pg.getTextContent();
-  const runs = [];
-  for (const it of tc.items) {
-    if (!it.str) continue;
-    const t = pdfjsLib.Util.transform(vp.transform, it.transform);
-    if (Math.abs(t[1]) > 0.01 || Math.abs(t[2]) > 0.01) continue; // skip rotated text
-    const fh = Math.abs(t[3]); if (fh < 1) continue;
-    const r = { x: t[4], base: t[5], fh, w: Math.abs(it.width), str: it.str,
-      fam: (tc.styles[it.fontName] || {}).fontFamily || '', font: it.fontName };
-    const last = runs[runs.length - 1];
-    // merge pieces that sit on the same line next to each other
-    if (last && Math.abs(last.base - r.base) < fh * 0.2 && Math.abs(last.fh - fh) < fh * 0.2 &&
-        r.x - (last.x + last.w) < fh * 0.8 && r.x - (last.x + last.w) > -fh) {
-      const gap = r.x - (last.x + last.w);
-      if (gap > fh * 0.15 && !/\s$/.test(last.str) && !/^\s/.test(r.str)) last.str += ' ';
-      last.str += r.str; last.w = r.x + r.w - last.x;
-    } else if (it.str.trim()) runs.push(r);
-  }
-  const tl = w.querySelector('.tl'), z = S.zoom;
-  w._runs = runs;
-  runs.forEach((r, i) => {
-    if (!r.str.trim()) return;
-    const s = el('div', 'ts'); s.dataset.i = i;
-    Object.assign(s.style, { left: r.x * z + 'px', top: (r.base - r.fh * 0.9) * z + 'px', width: r.w * z + 'px', height: r.fh * 1.15 * z + 'px' });
-    s.title = 'Click to edit';
-    tl.append(s);
-  });
 }
 
 function renderAnnots(p, w = pageEl(p)) {
@@ -352,9 +318,16 @@ function annotEl(a) {
   e.dataset.id = a.id;
   e.style.left = a.x * z + 'px'; e.style.top = a.y * z + 'px';
   if (a.type === 'text') {
-    e.textContent = a.text;
-    Object.assign(e.style, { fontFamily: (a.css ? `"${a.css}", ` : '') + (a.css2 ? `"${a.css2}", ` : '') + FONTS[a.font].css, fontSize: a.size * z + 'px', color: a.color, fontWeight: a.bold ? 'bold' : 'normal' });
-    if (a.angle) { e.style.transformOrigin = `0 ${FONTS[a.font].base * a.size * z}px`; e.style.transform = `rotate(${-a.angle}deg)`; }
+    Object.assign(e.style, { fontFamily: fontCss(a), fontSize: a.size * z + 'px', color: a.color, fontWeight: a.bold ? 'bold' : 'normal', lineHeight: a.lh || 1.2 });
+    if (a.wrapW) {
+      e.style.width = a.wrapW * z + 'px';
+      for (const l of textLines(a)) { // one row per saved line → screen and PDF break lines identically
+        const d = el('div'); d.textContent = l.t || ' '; d.style.paddingLeft = l.x * z + 'px';
+        if (l.runs.length > 1) d.style.textAlignLast = 'justify';
+        e.append(d);
+      }
+    } else e.textContent = a.text;
+    if (a.angle) { e.style.transformOrigin = `0 ${baseFor(a.font, a.lh) * a.size * z}px`; e.style.transform = `rotate(${-a.angle}deg)`; }
     if (a.op != null && a.op < 1) e.style.opacity = a.op;
   } else {
     e.style.width = a.w * z + 'px'; e.style.height = a.h * z + 'px';
@@ -552,7 +525,8 @@ function setTool(t) {
   if (typeof hideAreaMenu === 'function' && t !== 'area') hideAreaMenu();
   commitEditing();
   S.tool = t; if (t !== 'place') S.stamp = null;
-  if (t === 'edittext') $$('.page').forEach(w => { const p = pageById(w.dataset.id); if (w._painted && p?.src >= 0) getPg(p).then(pg => buildTextLayer(w, p, pg)); });
+  if (t !== 'edittext' && typeof hideEditMenu === 'function') { hideEditMenu(); hideHover(); }
+  if (t === 'edittext') S.pages.slice(Math.max(0, S.current - 2), S.current + 3).forEach(p => pageBlocks(p).catch(() => {})); // ready before the first click
   document.body.className = 'tool-' + t;
   $$('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   $('#bSign').classList.toggle('on', t === 'place' && S.stamp?.sig);
@@ -619,19 +593,26 @@ function deleteSelected() {
 }
 
 /* text editing in place */
-function startEdit(a, p, takeSnap = true) {
+function startEdit(a, p, takeSnap = true, at) {
   const e = document.querySelector(`.an[data-id="${a.id}"]`); if (!e) return;
   if (takeSnap) snap();
+  // edit the raw text; the browser wraps it exactly like textLines() does
+  e.textContent = a.text; e.classList.add('editing');
+  if (a.wrapW) Object.assign(e.style, { whiteSpace: 'pre-wrap', width: a.wrapW * S.zoom + 'px', textIndent: (a.indent || 0) * S.zoom + 'px', textAlign: a.align === 'justify' ? 'justify' : '' });
   e.contentEditable = 'plaintext-only';
   if (e.contentEditable !== 'plaintext-only') e.contentEditable = 'true';
   e.querySelector('.h')?.remove();
   e.focus();
-  const r = document.createRange(); r.selectNodeContents(e);
-  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  const sel = getSelection(); sel.removeAllRanges();
+  let r = at && document.caretRangeFromPoint ? document.caretRangeFromPoint(at.x, at.y) : null;
+  if (!r || !e.contains(r.startContainer)) { // caret at the end (new box: empty anyway)
+    r = document.createRange(); r.selectNodeContents(e); r.collapse(false);
+  }
+  sel.addRange(r);
   e.oninput = () => { a.text = e.innerText; };
   e.onblur = e._finish = () => {
     if (e._done) return; e._done = true;
-    e.contentEditable = 'false';
+    e.contentEditable = 'false'; e.classList.remove('editing');
     a.text = e.innerText.replace(/\n$/, '');
     if (!a.text.trim()) { p.annots = p.annots.filter(x => x !== a); if (S.sel === a.id) S.sel = null; if (a._fresh) { S.undo.pop(); updateButtons(); } }
     delete a._fresh;
@@ -701,18 +682,32 @@ $('#pages').addEventListener('pointerdown', ev => {
       a.x = ox + q.x - s.x; a.y = oy + q.y - s.y;
       const n = document.querySelector(`.an[data-id="${a.id}"]`);
       if (n) { n.style.left = a.x * z + 'px'; n.style.top = a.y * z + 'px'; }
-    }, () => { if (!moved && was && a.type === 'text') startEdit(a, p); });
+    }, e => { if (!moved && (was || S.tool === 'edittext') && a.type === 'text') startEdit(a, p, true, { x: e.clientX, y: e.clientY }); });
     return;
   }
 
-  /* click existing PDF text with Edit-text tool */
-  if (S.tool === 'edittext' && ev.target.classList.contains('ts')) {
-    ev.preventDefault(); editExistingText(p, w, w._runs[+ev.target.dataset.i]); ev.target.remove(); return;
+  /* Edit text: click = edit that paragraph (caret at the click), drag = select text to delete or edit together */
+  if (S.tool === 'edittext' && !ev.target.closest('.ff')) {
+    ev.preventDefault(); commitEditing(); select(null); hideEditMenu();
+    const band = el('div', 'band'); let q = s, moved = false;
+    const box = () => ({ x: Math.min(s.x, q.x), y: Math.min(s.y, q.y), w: Math.abs(q.x - s.x), h: Math.abs(q.y - s.y) });
+    drag(e => {
+      q = pt(e);
+      if (!moved && Math.hypot(q.x - s.x, q.y - s.y) * z < 5) return;
+      if (!moved) { moved = true; hideHover(); w.querySelector('.al').append(band); }
+      const b = box(); Object.assign(band.style, { left: b.x * z + 'px', top: b.y * z + 'px', width: b.w * z + 'px', height: b.h * z + 'px' });
+    }, async e => {
+      band.remove();
+      if (moved) return showEditMenu(p, w, box());
+      const b = await blockAt(p, s.x, s.y);
+      if (b) editBlock(p, b, { x: ev.clientX, y: ev.clientY });
+    });
+    return;
   }
 
   const def = S.def;
   switch (S.tool) {
-    case 'select': case 'edittext':
+    case 'select':
       commitEditing(); select(null); return;
     case 'text': case 'date': {
       ev.preventDefault(); commitEditing();
@@ -774,54 +769,224 @@ $('#pages').addEventListener('pointerdown', ev => {
     }
   }
 });
-$('#pages').addEventListener('dblclick', e => {
-  const ae = e.target.closest('.an.text'); if (!ae || ae.isContentEditable) return;
-  const f = findAnnot(ae.dataset.id); if (f) startEdit(f.a, f.p);
+$('#pages').addEventListener('dblclick', async e => {
+  const ae = e.target.closest('.an.text');
+  if (ae) { if (ae.isContentEditable) return; const f = findAnnot(ae.dataset.id); if (f) startEdit(f.a, f.p, true, { x: e.clientX, y: e.clientY }); return; }
+  // Select mode: double-click any PDF text to edit it (like Acrobat)
+  const w = e.target.closest('.page'); if (S.tool !== 'select' || !w || e.target.closest('.an, .ff')) return;
+  const p = pageById(w.dataset.id), r = w.getBoundingClientRect();
+  const b = await blockAt(p, (e.clientX - r.left) / S.zoom, (e.clientY - r.top) / S.zoom);
+  if (b) editBlock(p, b, { x: e.clientX, y: e.clientY });
 });
 $('#view').addEventListener('pointerdown', e => { if (!e.target.closest('.page') && S.sel) { commitEditing(); select(null); } });
 
-/* "Edit text": really delete the original characters from the page and drop an editable copy in their place */
-async function editExistingText(p, w, r) {
-  commitEditing();
-  const c = w.querySelector('canvas'), k = c.width / dims(p).w;
+/* ================= editing existing PDF text (paragraph-aware) =================
+   Click anywhere in a paragraph → the whole paragraph becomes one editable, re-wrapping text box,
+   with the caret exactly where you clicked. The original characters are really deleted from the page. */
+
+// ---- text layout: identical on screen and in the saved PDF ----
+const FONT_METRICS = { Helvetica: [0.905, 0.212], Times: [0.891, 0.216], Courier: [0.833, 0.300] }; // ascent, descent
+function baseFor(font, lh = 1.2) { const [as, ds] = FONT_METRICS[font] || FONT_METRICS.Helvetica; return (lh - (as + ds)) / 2 + as; }
+const fontCss = a => (a.css ? `"${a.css}", ` : '') + (a.css2 ? `"${a.css2}", ` : '') + FONTS[a.font].css;
+let layoutCtx;
+function measureFor(a) {
+  layoutCtx = layoutCtx || el('canvas').getContext('2d');
+  const font = `${a.bold ? 'bold ' : ''}100px ${fontCss(a)}`, k = a.size / 100;
+  return s => { layoutCtx.font = font; return layoutCtx.measureText(s).width * k; };
+}
+// Lines of a text box: [{ t, x, runs:[{t,x}] }] in points. Wrapping boxes re-flow; justified lines spread their words.
+function textLines(a) {
+  const paras = String(a.text).replace(/\r/g, '').split('\n');
+  if (!a.wrapW) return paras.map(t => ({ t, x: 0, runs: [{ t, x: 0 }] }));
+  const m = measureFor(a), out = [], isSp = s => /^\s+$/.test(s);
+  const push = (toks, last) => {
+    while (toks.length && isSp(toks[toks.length - 1])) toks.pop(); // trailing spaces hang, like in the editor
+    const x = out.length === 0 ? (a.indent || 0) : 0, t = toks.join('');
+    let runs = [{ t, x: 0 }];
+    if (a.align === 'justify' && !last) {
+      const spaces = toks.filter(isSp).length, extra = spaces ? (a.wrapW - x - m(t)) / spaces : 0;
+      if (extra > 0) { let cx = 0; runs = []; for (const tk of toks) { if (isSp(tk)) cx += m(tk) + extra; else { runs.push({ t: tk, x: cx }); cx += m(tk); } } }
+    }
+    out.push({ t, x, runs });
+  };
+  for (const para of paras) {
+    const toks = para.split(/(\s+)/).filter(s => s.length);
+    let line = [], w = 0, wrapped = false;
+    for (const tk of toks) {
+      const sp = isSp(tk), tw = m(tk), avail = a.wrapW - (out.length === 0 ? (a.indent || 0) : 0);
+      if (!sp && line.some(x => !isSp(x)) && w + tw > avail + 0.01) { push(line, false); line = []; w = 0; wrapped = true; }
+      if (sp && !line.length && wrapped) continue; // a wrapped line doesn't start with the space that caused the wrap
+      line.push(tk); w += tw;
+    }
+    push(line, true);
+  }
+  return out;
+}
+
+// ---- paragraphs on a page (from the shared text index; includes recognised OCR text) ----
+const blockCache = new WeakMap();
+async function pageBlocks(p) {
+  const items = await pageItems(p);
+  if (blockCache.has(items)) return blockCache.get(items);
+  const runs = []; // 1) lines: pieces on the same baseline, next to each other
+  for (const it of items) {
+    if (it.rot || !it.str) continue;
+    const last = runs[runs.length - 1], fh = it.fh;
+    if (last && Math.abs(last.base - it.base) < fh * 0.25 && Math.abs(last.fh - fh) < fh * 0.25 &&
+        it.x - (last.x + last.w) < fh * 1.2 && it.x - (last.x + last.w) > -fh) {
+      if (it.x - (last.x + last.w) > fh * 0.15 && !/\s$/.test(last.str) && !/^\s/.test(it.str)) last.str += ' ';
+      last.str += it.str; last.w = Math.max(last.w, it.x + it.w - last.x);
+    } else if (it.str.trim()) runs.push({ x: it.x, base: it.base, fh, w: it.w, str: it.str, font: it.font, fam: it.fam });
+  }
+  const blocks = []; // 2) paragraphs: same size, steady line spacing, same left edge (first-line indent allowed)
+  for (const r of runs) {
+    const b = blocks[blocks.length - 1], prev = b && b.lines[b.lines.length - 1], gap = prev ? r.base - prev.base : 0;
+    if (b && Math.abs(prev.fh - r.fh) < r.fh * 0.15 && gap > r.fh * 0.7 && gap < r.fh * 1.9 &&
+        (b.lines.length < 2 || Math.abs(gap - b.step) < r.fh * 0.3) &&
+        Math.abs(r.x - b.x0) < r.fh * 4 && r.x < b.x1 && r.x + r.w > b.x0) {
+      b.lines.push(r); if (b.lines.length === 2) b.step = gap;
+      b.x0 = Math.min(b.x0, r.x); b.x1 = Math.max(b.x1, r.x + r.w);
+    } else blocks.push({ lines: [r], x0: r.x, x1: r.x + r.w, step: 0 });
+  }
+  for (const b of blocks) {
+    const L = b.lines, fh = L[0].fh, last = L.length - 1;
+    b.y0 = L[0].base - fh * 0.95; b.y1 = L[last].base + fh * 0.3;
+    // lines that run to the right edge continue the sentence; short lines are real line breaks (lists, addresses…)
+    const full = l => l.x + l.w > b.x1 - fh * 2.5;
+    b.text = L.map((l, i) => { const s = l.str.replace(/\s+$/, ''); return i === last ? s : full(l) ? (/-$/.test(s) ? s : s + ' ') : s + '\n'; }).join('');
+    b.justify = L.length > 2 && L.slice(0, last).every(l => Math.abs(l.x + l.w - b.x1) < fh * 0.3);
+  }
+  blockCache.set(items, blocks);
+  return blocks;
+}
+async function blockAt(p, x, y) {
+  return (await pageBlocks(p)).find(b => x >= b.x0 - 2 && x <= b.x1 + 2 && y >= b.y0 - 1 && y <= b.y1 + 1) || null;
+}
+
+// ---- hover: show what will become editable ----
+let hoverBox = null, hoverReq = 0;
+function hideHover() { hoverBox?.remove(); hoverBox = null; }
+$('#pages').addEventListener('pointermove', e => {
+  if (e.buttons || (S.tool !== 'edittext' && S.tool !== 'select')) return hideHover();
+  const w = e.target.closest('.page');
+  if (!w || e.target.closest('.an, .ff, #editMenu')) { hideHover(); if (w) w.style.cursor = ''; return; }
+  const p = pageById(w.dataset.id); if (!p) return;
+  const r = w.getBoundingClientRect(), x = (e.clientX - r.left) / S.zoom, y = (e.clientY - r.top) / S.zoom, req = ++hoverReq;
+  blockAt(p, x, y).then(b => {
+    if (req !== hoverReq) return;
+    w.style.cursor = b ? 'text' : '';
+    if (!b || S.tool !== 'edittext') return hideHover();
+    if (!hoverBox || hoverBox.parentNode !== w) { hideHover(); hoverBox = el('div', 'hoverblock'); w.append(hoverBox); }
+    const z = S.zoom;
+    Object.assign(hoverBox.style, { left: (b.x0 - 3) * z + 'px', top: (b.y0 - 2) * z + 'px', width: (b.x1 - b.x0 + 6) * z + 'px', height: (b.y1 - b.y0 + 4) * z + 'px' });
+  });
+});
+$('#pages').addEventListener('pointerleave', hideHover);
+
+// ---- turn a paragraph (or any group of lines) into one editable text box ----
+function sampleColors(p, b) {
   let bg = '#ffffff', fg = '#000000';
   try {
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    const px = ctx.getImageData(Math.max(0, (r.x - 3) * k), Math.max(0, (r.base - r.fh * 0.5) * k), 1, 1).data;
-    bg = '#' + [px[0], px[1], px[2]].map(v => v.toString(16).padStart(2, '0')).join('');
-    const bx = Math.max(0, r.x * k), by = Math.max(0, (r.base - r.fh * 0.8) * k);
-    const bw = Math.max(1, Math.min(r.w * k, c.width - bx)), bh = Math.max(1, Math.min(r.fh * k, c.height - by));
-    const d = ctx.getImageData(bx, by, bw, bh).data; let best = 765;
-    for (let i = 0; i < d.length; i += 4) { const l = d[i] + d[i + 1] + d[i + 2]; if (l < best) { best = l; fg = '#' + [d[i], d[i + 1], d[i + 2]].map(v => v.toString(16).padStart(2, '0')).join(''); } }
-  } catch (e) { /* ignore */ }
-  const fam = (r.fam + ' ' + r.font).toLowerCase();
+    const c = pageEl(p).querySelector('canvas'), k = c.width / dims(p).w, ctx = c.getContext('2d', { willReadFrequently: true });
+    const l0 = b.lines[0], hex = d => '#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+    bg = hex(ctx.getImageData(Math.max(0, (b.x0 - 3) * k), Math.max(0, (l0.base - l0.fh * 0.5) * k), 1, 1).data);
+    const bx = Math.max(0, l0.x * k), by = Math.max(0, (l0.base - l0.fh * 0.8) * k);
+    const d = ctx.getImageData(bx, by, Math.max(1, Math.min(l0.w * k, c.width - bx)), Math.max(1, Math.min(l0.fh * k, c.height - by))).data;
+    let best = 765;
+    for (let i = 0; i < d.length; i += 4) { const l = d[i] + d[i + 1] + d[i + 2]; if (l < best) { best = l; fg = hex(d.subarray(i, i + 3)); } }
+  } catch { }
+  return { bg, fg };
+}
+async function editBlock(p, b, at) {
+  commitEditing(); hideHover(); hideEditMenu();
+  const L = b.lines, first = L[0], fh = first.fh, { bg, fg } = sampleColors(p, b);
+  const fam = (first.fam + ' ' + first.font).toLowerCase();
   const font = /mono|courier/.test(fam) ? 'Courier' : /serif/.test(fam) && !/sans/.test(fam) || /times/.test(fam) ? 'Times' : 'Helvetica';
-  const bold = /bold|black|heavy/.test(fam);
   snap();
-  // delete box in PDF user space (independent of later page rotation)
+  // delete boxes in PDF user space (independent of later page rotation) – one per line
   const vp = (await getPg(p)).getViewport({ scale: 1, rotation: totalRot(p) });
-  const c1 = vp.convertToPdfPoint(r.x - 0.5, r.base - r.fh * 0.85), c2 = vp.convertToPdfPoint(r.x + r.w + 0.5, r.base + r.fh * 0.2);
-  p.erase = [...(p.erase || []), [Math.min(c1[0], c2[0]), Math.min(c1[1], c2[1]), Math.max(c1[0], c2[0]), Math.max(c1[1], c2[1])]];
-  let ok = false, pdfFont = null, baseFont = '';
-  try { const res = await erasedPage(p), n = res.hits.length - 1; ok = res.hits[n] > 0; pdfFont = res.hits.fonts[n]; baseFont = res.hits.bases[n] || ''; } catch (e) { console.warn(e); }
-  if (ok) repaint(p);
-  else { // text lives somewhere we can't rewrite (e.g. inside a form object) – fall back to covering it
-    p.erase.pop();
-    p.annots.push({ id: nid(), type: 'rect', x: r.x - 1, y: r.base - r.fh * 0.92, w: r.w + 2, h: r.fh * 1.18, color: bg, op: 1 });
-  }
-  const a ={ id: nid(), type: 'text', x: r.x, y: r.base - FONTS[font].base * r.fh, text: r.str.trim(), size: r.fh, font, bold, color: fg };
-  if (ok && pdfFont) { a.pdfFont = pdfFont; a.css = r.font; } // reuse the PDF's own font
+  const boxes = L.map(l => {
+    const c1 = vp.convertToPdfPoint(l.x - 0.5, l.base - l.fh * 0.85), c2 = vp.convertToPdfPoint(l.x + l.w + 0.5, l.base + l.fh * 0.2);
+    return [Math.min(c1[0], c2[0]), Math.min(c1[1], c2[1]), Math.max(c1[0], c2[0]), Math.max(c1[1], c2[1])];
+  });
+  const before = p.erase || [];
+  p.erase = [...before, ...boxes];
+  let hits = [], pdfFont = null, baseFont = '';
+  if (p.src >= 0) try {
+    const res = await erasedPage(p);
+    hits = res.hits.slice(before.length);
+    const i = hits.findIndex(h => h > 0);
+    if (i >= 0) { pdfFont = res.hits.fonts[before.length + i]; baseFont = res.hits.bases[before.length + i] || ''; }
+  } catch (e) { console.warn(e); }
+  // lines whose text can't be rewritten (scans, unusual PDFs) are covered instead
+  p.erase = [...before, ...boxes.filter((_, i) => hits[i] > 0)];
+  L.forEach((l, i) => { if (!(hits[i] > 0)) p.annots.push({ id: nid(), type: 'rect', x: l.x - 1, y: l.base - l.fh * 0.92, w: l.w + 2, h: l.fh * 1.18, color: bg, op: 1 }); });
+  if (!p.erase.length) delete p.erase;
+  if (hits.some(h => h > 0)) repaint(p);
+  const lh = L.length > 1 ? Math.min(3, Math.max(0.9, b.step / fh)) : 1.2;
+  const a = { id: nid(), type: 'text', x: b.x0, y: first.base - baseFor(font, lh) * fh, text: b.text, size: fh, font, bold: /bold|black|heavy/.test(fam), color: fg, lh };
+  if (L.length > 1) { a.wrapW = b.x1 - b.x0 + 0.5; if (first.x - b.x0 > 0.5) a.indent = first.x - b.x0; if (b.justify) a.align = 'justify'; }
+  if (pdfFont && hits.every(h => h > 0)) { a.pdfFont = pdfFont; a.css = first.font; } // reuse the PDF's own font
   if (baseFont) {
     a.baseFont = baseFont;
     systemFont(baseFont).then(sf => {
       if (!sf || a.css2) return; a.css2 = sf.family;
       const e = document.querySelector(`.an[data-id="${a.id}"]`);
-      if (e && e.isContentEditable) e.style.fontFamily = `${a.css ? `"${a.css}", ` : ''}"${a.css2}", ${FONTS[a.font].css}`; // just swap the font, keep typing
-      else renderAnnots(p);
+      if (e && e.isContentEditable) e.style.fontFamily = fontCss(a); else renderAnnots(p);
     });
   }
   p.annots.push(a); S.sel = a.id; renderAnnots(p); updateProps();
-  startEdit(a, p, false);
+  startEdit(a, p, false, at);
+}
+
+// ---- drag across text in Edit mode → Delete it, or edit it as one box ----
+let editMenu = null;
+function hideEditMenu() { editMenu?.remove(); editMenu = null; $$('.band.editsel').forEach(b => b.remove()); }
+async function linesIn(p, box) {
+  const lines = (await pageBlocks(p)).flatMap(b => b.lines);
+  return lines.filter(l => l.x < box.x + box.w && l.x + l.w > box.x && l.base - l.fh * 0.5 > box.y && l.base - l.fh * 0.5 < box.y + box.h);
+}
+async function showEditMenu(p, w, box) {
+  hideEditMenu();
+  const lines = await linesIn(p, box);
+  if (!lines.length) return toast('No text in that area.');
+  const z = S.zoom, band = el('div', 'band editsel');
+  Object.assign(band.style, { left: box.x * z + 'px', top: box.y * z + 'px', width: box.w * z + 'px', height: box.h * z + 'px' });
+  w.querySelector('.al').append(band);
+  editMenu = el('div'); editMenu.id = 'editMenu';
+  editMenu.innerHTML = '<button data-a="del" title="Really remove this text from the PDF">🗑 Delete text</button><button data-a="edit" title="Edit all these lines in one box">✎ Edit as one box</button><button data-a="x">Cancel</button>';
+  $('#view').append(editMenu);
+  editMenu.style.left = w.offsetLeft + box.x * z + 'px'; editMenu.style.top = w.offsetTop + (box.y + box.h) * z + 6 + 'px';
+  editMenu.onclick = async e => {
+    const act = e.target.closest('button')?.dataset.a; if (!act) return;
+    hideEditMenu();
+    if (act === 'del') await deleteTextIn(p, box, lines);
+    if (act === 'edit') {
+      const x0 = Math.min(...lines.map(l => l.x)), x1 = Math.max(...lines.map(l => l.x + l.w));
+      const step = lines.length > 1 ? (lines[lines.length - 1].base - lines[0].base) / (lines.length - 1) : 0;
+      editBlock(p, { lines, x0, x1, step, text: lines.map(l => l.str.replace(/\s+$/, '')).join('\n'), justify: false });
+    }
+  };
+}
+// Delete exactly the characters inside the box (true deletion; covered only where the PDF can't be rewritten)
+async function deleteTextIn(p, box, lines) {
+  snap();
+  const vp = (await getPg(p)).getViewport({ scale: 1, rotation: totalRot(p) }), before = p.erase || [];
+  const boxes = lines.map(l => {
+    const x0 = Math.max(box.x, l.x - 0.5), x1 = Math.min(box.x + box.w, l.x + l.w + 0.5);
+    const c1 = vp.convertToPdfPoint(x0, l.base - l.fh * 0.85), c2 = vp.convertToPdfPoint(x1, l.base + l.fh * 0.2);
+    return { l, x0, x1, b: [Math.min(c1[0], c2[0]), Math.min(c1[1], c2[1]), Math.max(c1[0], c2[0]), Math.max(c1[1], c2[1])] };
+  });
+  p.erase = [...before, ...boxes.map(x => x.b)];
+  let hits = [];
+  if (p.src >= 0) try { hits = (await erasedPage(p)).hits.slice(before.length); } catch { }
+  p.erase = [...before, ...boxes.filter((_, i) => hits[i] > 0).map(x => x.b)];
+  const bg = sampleColors(p, { lines: [lines[0]], x0: box.x }).bg;
+  boxes.forEach((x, i) => { if (!(hits[i] > 0)) p.annots.push({ id: nid(), type: 'rect', x: x.x0, y: x.l.base - x.l.fh * 0.92, w: x.x1 - x.x0, h: x.l.fh * 1.18, color: bg, op: 1 }); });
+  if (!p.erase.length) delete p.erase;
+  if (p.ocr?.length) for (const o of p.ocr) if (o.x < box.x + box.w && o.x + o.w > box.x && o.y < box.y + box.h && o.y + o.h > box.y) o.text = ''; // recognised text too
+  repaint(p); renderAnnots(p);
+  toast(hits.every(h => h > 0) ? 'Text deleted – Ctrl+Z to undo' : 'Deleted (parts that are pictures were covered) – Ctrl+Z to undo');
 }
 
 /* ---------------- signatures & images ---------------- */
@@ -1236,17 +1401,17 @@ function writeWithPdfFont(doc, page, pageFonts, a, ox, top) {
     const c = hexRgb(a.color), L = PDFLib;
     const ops = [L.pushGraphicsState(), L.beginText(), L.setFontAndSize(a.pdfFont, a.size), L.setCharacterSpacing(0), L.setWordSpacing(0),
       L.setFillingRgbColor(c.red, c.green, c.blue)];
-    const lines = a.text.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i]) continue;
+    const lh = a.lh || 1.2, base = baseFor(a.font, lh), lines = textLines(a);
+    for (let i = 0; i < lines.length; i++) for (const run of lines[i].runs) {
+      if (!run.t) continue;
       const arr = PDFArray.withContext(doc.context);
-      for (const ch of lines[i].replace(/\u00a0/g, ' ')) {
+      for (const ch of run.t.replace(/\u00a0/g, ' ')) {
         const code = map.get(ch);
         if (code !== undefined && (info.w(code) > 0 || ch === ' ')) arr.push(L.PDFHexString.of(hex(code)));
         else if (ch === ' ') arr.push(PDFNumber.of(-278)); // subset fonts often drop the space glyph – use a gap instead
         else return false;
       }
-      ops.push(L.setTextMatrix(1, 0, 0, 1, ox + a.x, top - (a.y + FONTS[a.font].base * a.size + i * 1.2 * a.size)), L.PDFOperator.of('TJ', [arr]));
+      ops.push(L.setTextMatrix(1, 0, 0, 1, ox + a.x + lines[i].x + run.x, top - (a.y + base * a.size + i * lh * a.size)), L.PDFOperator.of('TJ', [arr]));
     }
     ops.push(L.endText(), L.popGraphicsState());
     page.pushOperators(...ops);
@@ -1369,10 +1534,13 @@ async function buildPdf(list) {
           if (sf) try { f = sysFonts[a.baseFont] || (sysFonts[a.baseFont] = await out.embedFont(sf.bytes, { subset: true })); } catch (e) { console.warn(e); }
         }
         f = f || await getFont(F.std[a.bold ? 1 : 0]);
-        a.text.split('\n').forEach((ln, i) => {
-          if (!ln) return;
-          page.drawText(cleanText(ln, f), { x: ox + a.x, y: oy + H - (a.y + F.base * a.size + i * 1.2 * a.size), size: a.size, font: f, color: hexRgb(a.color),
-            rotate: a.angle ? degrees(a.angle) : undefined, opacity: a.op ?? 1 });
+        const lh = a.lh || 1.2, base = baseFor(a.font, lh);
+        textLines(a).forEach((ln, i) => {
+          for (const run of ln.runs) {
+            if (!run.t) continue;
+            page.drawText(cleanText(run.t, f), { x: ox + a.x + ln.x + run.x, y: oy + H - (a.y + base * a.size + i * lh * a.size), size: a.size, font: f, color: hexRgb(a.color),
+              rotate: a.angle ? degrees(a.angle) : undefined, opacity: a.op ?? 1 });
+          }
         });
       } else if (a.type === 'ink') {
         const c = hexRgb(a.color);
@@ -1538,12 +1706,14 @@ async function pageItems(p) {
     let items = [];
     if (p.src >= 0) {
       const pg = await getPg(p), vp = pg.getViewport({ scale: 1, rotation: totalRot(p) });
-      items = (await pg.getTextContent()).items.filter(i => i.str).map(i => {
+      const tc = await pg.getTextContent(), styles = tc.styles;
+      items = tc.items.filter(i => i.str).map(i => {
         const t = pdfjsLib.Util.transform(vp.transform, i.transform), fh = Math.hypot(t[2], t[3]);
-        return { str: i.str, x: t[4], y: t[5] - fh * 0.9, w: i.width, h: fh * 1.15, fh };
+        return { str: i.str, x: t[4], y: t[5] - fh * 0.9, w: i.width, h: fh * 1.15, fh, base: t[5], font: i.fontName,
+          fam: (styles[i.fontName] || {}).fontFamily || '', rot: Math.abs(t[1]) > 0.01 || Math.abs(t[2]) > 0.01 };
       });
     }
-    for (const l of p.ocr || []) items.push({ str: l.text, x: l.x, y: l.y, w: l.w, h: l.h, fh: l.h / 1.15 });
+    for (const l of p.ocr || []) if (l.text) items.push({ str: l.text, x: l.x, y: l.y, w: l.w, h: l.h, fh: l.h / 1.15, base: l.y + l.h * 0.8, font: '', fam: '' });
     return items;
   })());
   return findCache.get(key);
