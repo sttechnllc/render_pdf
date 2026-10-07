@@ -15,6 +15,13 @@ const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle, BlendMode } = PD
 })();
 // Open a PDF with pdf.js (always through the shared worker; eval disabled for safety)
 const pdfOpen = params => pdfjsLib.getDocument({ isEvalSupported: false, ...params, ...(window.PDFW ? { worker: window.PDFW } : {}) });
+// Mac app: native services (OCR, save dialogs, print, fonts) via the app's message bridge
+const NATIVE = (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native) || null;
+const nativeWaits = {}; let nativeSeq = 0;
+window.__nativeReply = m => { const w = nativeWaits[m.id]; if (!w) return; delete nativeWaits[m.id]; m.error ? w.rej(new Error(m.error)) : w.res(m.result); };
+const nativeCall = (cmd, data = {}) => new Promise((res, rej) => { const id = ++nativeSeq; nativeWaits[id] = { res, rej }; NATIVE.postMessage({ ...data, cmd, id }); });
+const toB64 = data => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).slice(String(fr.result).indexOf(',') + 1)); fr.onerror = rej; fr.readAsDataURL(data instanceof Blob ? data : new Blob([data])); });
+const fromB64 = b => { const bin = atob(b), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
@@ -94,6 +101,7 @@ async function imageToDataUrl(file) {
 }
 function hexRgb(h) { const n = parseInt(h.slice(1), 16); return rgb((n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255); }
 function download(bytes, name, type = 'application/pdf') {
+  if (NATIVE) { toB64(bytes).then(b64 => nativeCall('save', { name, b64 })).catch(e => toast(e.message)); return; }
   const a = el('a'); a.href = URL.createObjectURL(bytes instanceof Blob ? bytes : new Blob([bytes], { type }));
   a.download = name; document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
@@ -1264,6 +1272,10 @@ function systemFont(base) {
     const low = ps.toLowerCase(), bold = /bold|black|heavy|semibold/.test(low), ital = /italic|oblique/.test(low);
     const family = ps.replace(/[-,].*$/, '').replace(/(PS)?MT$|PS$/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
     const key = ps.replace(/[-,].*$/, '').toLowerCase();
+    if (NATIVE) { // Mac app: ask macOS for the installed font file
+      try { const r = await nativeCall('font', { ps }); if (r) return { bytes: fromB64(r.b64), family: r.family }; } catch { }
+      return null;
+    }
     // 1) direct file read (works in PDFEditor.exe)
     const file = FONT_FILES[key] || FONT_FILES[key.replace(/(ps)?mt$/, '')];
     if (file) {
@@ -1395,6 +1407,12 @@ async function buildPdf(list) {
   return out.save();
 }
 async function saveBytes(bytes, name, remember) {
+  if (NATIVE) {
+    const r = await nativeCall('save', { name, b64: await toB64(bytes) });
+    if (!r) return false;
+    if (remember) { S.fileHandle = { native: r.token }; S.name = r.name; }
+    toast('Saved ✔'); return true;
+  }
   if (window.showSaveFilePicker) {
     try {
       const h = await showSaveFilePicker({ suggestedName: name, types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] });
@@ -1413,7 +1431,8 @@ async function save(saveAs) {
     const clean = () => { S.dirty = S.rev !== rev; updateTitle(); pruneImages(); };
     if (S.fileHandle && !saveAs) { // after the first save, Ctrl+S simply overwrites that file
       try {
-        const w = await S.fileHandle.createWritable(); await w.write(bytes); await w.close();
+        if (S.fileHandle.native) await nativeCall('saveTo', { token: S.fileHandle.native, b64: await toB64(bytes) });
+        else { const w = await S.fileHandle.createWritable(); await w.write(bytes); await w.close(); }
         clean(); return toast('Saved ✔');
       } catch (e) { console.warn(e); }
     }
@@ -1921,6 +1940,7 @@ function updateZoomSel() {
 async function printPdf() {
   if (!S.pages.length) return;
   commitEditing(); toast('Preparing to print…');
+  if (NATIVE) { try { await nativeCall('print', { b64: await toB64(await buildPdf(S.pages)) }); } catch (e) { toast(e.message, 5000); } return; }
   const url = URL.createObjectURL(new Blob([await buildPdf(S.pages)], { type: 'application/pdf' }));
   const f = el('iframe'); f.style.cssText = 'position:fixed;width:1px;height:1px;border:0;right:0;bottom:0;opacity:0';
   f.src = url; document.body.append(f);
@@ -2000,12 +2020,13 @@ async function textInBox(p, b) {
 }
 async function ocrRegion(p, b) {
   const u = helperUrl('ocr');
-  if (!u) throw new Error('Text recognition needs PDFEditor.exe (it uses the OCR engine built into Windows).');
+  if (!u && !NATIVE) throw new Error('Text recognition needs the desktop app (Windows: the .exe, Mac: the .app).');
   const k = Math.min(4, Math.max(2, 1600 / Math.max(b.w, b.h)));
   const c = await renderRegion(p, b, k);
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
   let res;
-  try { res = await (await fetch(u, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/png' } })).json(); }
+  if (NATIVE) res = await nativeCall('ocr', { png: await toB64(blob) }); // Apple Vision
+  else try { res = await (await fetch(u, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/png' } })).json(); }
   catch { throw new Error("Couldn't reach the text-recognition helper. Close the editor and open it again (from the .exe)."); }
   if (res.error) throw new Error(res.error);
   const fix = t => t.replace(/(\d) ([,.]\d)/g, '$1$2').replace(/ ([,.;:!?])(\s|$)/g, '$1$2');
@@ -2316,11 +2337,23 @@ addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTim
 
 setTool('select'); updateButtons();
 
+// Self-test: make sure the background PDF reader works in this browser engine; otherwise read PDFs in the page itself
+(async () => {
+  if (!window.PDFW) return;
+  try {
+    const td = await PDFDocument.create(); td.addPage([10, 10]); const tiny = await td.save(); // tiny 1-page PDF
+    await Promise.race([pdfOpen({ data: tiny }).promise, new Promise((_, j) => setTimeout(() => j(new Error('timeout')), 5000))]);
+  } catch (e) {
+    console.warn('Background PDF reader unavailable – using the in-page reader', e);
+    window.PDFW = null;
+    const src = document.getElementById('pdfWorkerSrc'), sc = document.createElement('script'); sc.textContent = src.textContent; document.head.append(sc);
+  }
+})();
+
 // PDFEditor.exe passes a file (drag onto exe / "Open with") as a small script next to this page
-window.__openPending = (name, b64) => {
-  const bin = atob(b64), u8 = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-  openFiles([new File([u8], name, { type: 'application/pdf' })]);
+window.__openPending = (name, b64, add) => {
+  const f = new File([fromB64(b64)], name, { type: /\.pdf$/i.test(name) ? 'application/pdf' : '' });
+  add && S.pages.length ? addFiles([f]) : openFiles([f]);
 };
 {
   const m = /open=([\w-]+)/.exec(location.hash);

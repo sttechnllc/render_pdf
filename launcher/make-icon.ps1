@@ -49,10 +49,12 @@ function Draw([int]$s) {
   $ms = New-Object IO.MemoryStream
   $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png)
   if ($s -eq 256) { $bmp.Save((Join-Path $PSScriptRoot 'icon-256.png'), [Drawing.Imaging.ImageFormat]::Png) }
+  if ($s -eq 1024) { $bmp.Save((Join-Path $PSScriptRoot 'icon-1024.png'), [Drawing.Imaging.ImageFormat]::Png) } # Mac app icon
   return ,$ms.ToArray()
 }
 
 $sizes = 16, 24, 32, 48, 64, 128, 256
+Draw 1024 | Out-Null  # large PNG for the Mac app icon (not part of the .ico)
 $pngs = $sizes | ForEach-Object { ,(Draw $_) }
 $out = New-Object IO.MemoryStream
 $w = New-Object IO.BinaryWriter $out

@@ -46,6 +46,7 @@ const MIME = { pdf: 'application/pdf', zip: 'application/zip', png: 'image/png',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
 // Save any file: Windows "Save as" dialog when available, otherwise Downloads
 async function saveAny(data, name) {
+  if (NATIVE) return !!(await nativeCall('save', { name, b64: await toB64(data) }));
   const ext = name.split('.').pop().toLowerCase(), type = MIME[ext] || 'application/octet-stream';
   const blob = data instanceof Blob ? data : new Blob([data], { type });
   if (window.showSaveFilePicker) {
@@ -263,7 +264,7 @@ async function toDocx(bytes, { scans = true } = {}, prog) {
 
 /* ---------------- 4. OCR whole document (searchable PDF) ---------------- */
 async function ocrDocument({ only = 'scanned', range = '' }, prog) {
-  if (!helperUrl('ocr')) throw new Error('OCR uses the text recognition built into Windows – open the editor with "Mark\'s Render PDF Editor.exe" to use it.');
+  if (!helperUrl('ocr') && !NATIVE) throw new Error('OCR uses the text recognition built into Windows – open the editor with "Mark\'s Render PDF Editor.exe" to use it.');
   const idx = range.trim() ? parseRange(range.replace(/\s*-\s*/g, '-'), S.pages.length) : S.pages.map((_, i) => i);
   snap(); let pagesDone = 0, lines = 0;
   for (let n = 0; n < idx.length; n++) {
@@ -623,6 +624,11 @@ const zipParts = name => name.split('/').filter(x => x && x !== '.' && x !== '..
 async function extractZip(z, list, prog) {
   const files = list.filter(e => !e.dir);
   if (!files.length) return 0;
+  if (NATIVE) { // Mac app: choose a folder, the app writes the files
+    const out = [];
+    for (let i = 0; i < files.length; i++) { await prog(i / files.length, 'Reading ' + files[i].name); out.push({ path: zipParts(files[i].name).join('/'), b64: await toB64(await zipEntryData(z, files[i])) }); }
+    return nativeCall('saveFolder', { files: out });
+  }
   if (window.showDirectoryPicker) {
     const root = await showDirectoryPicker({ mode: 'readwrite', id: 'unzip' });
     for (let i = 0; i < files.length; i++) {

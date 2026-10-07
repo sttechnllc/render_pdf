@@ -35,4 +35,4 @@ if (process.platform === 'win32' && fs.existsSync(csc)) {
     path.join(__dirname, 'launcher', 'Launcher.cs'), path.join(__dirname, 'launcher', 'Setup.cs'), path.join(__dirname, 'launcher', 'Taskbar.cs'), ver], { stdio: 'inherit' });
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log('Built', exe, (fs.statSync(exe).size / 1048576).toFixed(2) + ' MB');
-} else if (process.env.CI) throw new Error('C# compiler not found: ' + csc);
+} else if (process.env.CI && process.platform === 'win32') throw new Error('C# compiler not found: ' + csc);
