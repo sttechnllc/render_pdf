@@ -4,7 +4,7 @@
 
 const APP = {
   name: "Mark's Render PDF Editor",
-  version: '1.0.1',
+  version: '1.0.2',
   github: 'https://github.com/sttechnllc/render_pdf',
   coffee: 'https://www.buymeacoffee.com/nordberg',
 };
@@ -63,7 +63,7 @@ const zpad = (n, w = 3) => String(n).padStart(w, '0');
 const canvasBlob = (c, type = 'image/png', q) => new Promise(r => c.toBlob(r, type, q));
 const xmlEsc = s => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 async function currentBytes() { commitEditing(); return buildPdf(S.pages); }
-const openPdfjs = bytes => pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+const openPdfjs = bytes => pdfOpen({ data: bytes.slice(), isEvalSupported: false }).promise;
 
 /* ---------------- text layout reader (Word / text / Markdown / compare) ---------------- */
 async function readLines(pdf, prog, from = 0, to = pdf.numPages) {

@@ -17,8 +17,13 @@
 
 ## Download
 
-**[⬇ Download the latest release](https://github.com/sttechnllc/render_pdf/releases/latest)**: grab `MarksRenderPDFEditor.exe`
-(or the `.zip` if you need to email it). Copy it anywhere, even a USB stick, and double-click it.
+**[⬇ Download the latest release](https://github.com/sttechnllc/render_pdf/releases/latest)**, then pick one:
+
+- **`MarksRenderPDFEditor-Setup.exe`**: installs it (Start menu + desktop shortcut, "Open with" for PDFs). No admin rights needed; remove it any time in *Settings → Apps*.
+- **`MarksRenderPDFEditor.exe`**: the portable version. Nothing to install; run it from anywhere, even a USB stick.
+- `.zip`: the portable version zipped, if you need to email it.
+
+IT/scripted installs: `MarksRenderPDFEditor-Setup.exe --quiet` (silent), uninstall with `--uninstall --quiet`.
 
 - Drag a PDF onto the exe, or right-click a PDF → **Open with** → the exe.
 - `PDFEditor.html` is the same app and runs in any modern browser.

@@ -23,7 +23,9 @@ static class Launcher
     static long lastPing = DateTime.UtcNow.Ticks;   // read/written from several threads -> Interlocked
     static string token;
     static int port;
-    static readonly SemaphoreSlim busy = new SemaphoreSlim(2); // at most 2 requests processed at once
+    [ThreadStatic] static string allowOrigin; // per request: which origin to echo back
+    static readonly SemaphoreSlim busy = new SemaphoreSlim(16); // cap on simultaneous connections (browsers open idle spare ones)
+    static readonly SemaphoreSlim ocrLock = new SemaphoreSlim(1); // one recognition at a time (memory)
 
     [STAThread]
     static void Main(string[] args)
@@ -33,10 +35,16 @@ static class Launcher
             string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PDFEditor");
             Directory.CreateDirectory(dir);
             string html = Path.Combine(dir, "PDFEditor.html");
-            using (var res = Assembly.GetExecutingAssembly().GetManifestResourceStream("PDFEditor.html"))
+            Setup.Quiet = Array.IndexOf(args, "--quiet") >= 0;
+            if (args.Length > 0 && args[0] == "--uninstall") { Setup.Uninstall(); return; }
+            if (args.Length > 0 && args[0] == "--install" || Path.GetFileName(Application.ExecutablePath).IndexOf("setup", StringComparison.OrdinalIgnoreCase) >= 0)
+            { if (!Setup.Install()) return; args = new string[0]; }
+            // the editor is stored compressed inside the exe (smaller download)
+            using (var res = Assembly.GetExecutingAssembly().GetManifestResourceStream("PDFEditor.html.gz"))
+            using (var gz = new System.IO.Compression.GZipStream(res, System.IO.Compression.CompressionMode.Decompress))
             using (var ms = new MemoryStream())
             {
-                res.CopyTo(ms);
+                gz.CopyTo(ms);
                 byte[] data = ms.ToArray();
                 if (!File.Exists(html) || new FileInfo(html).Length != data.Length || !File.ReadAllBytes(html).SequenceEqual(data))
                     File.WriteAllBytes(html, data);
@@ -47,7 +55,7 @@ static class Launcher
             var mutex = new Mutex(true, "PDFEditor.OcrHelper", out isServer);
             if (isServer) StartServer(dir);
 
-            string hash = "";
+            string hash = "", pendingFile = null;
             string pend = Path.Combine(dir, "pending");
             Directory.CreateDirectory(pend);
             foreach (var old in Directory.GetFiles(pend))
@@ -56,7 +64,8 @@ static class Launcher
             {
                 string id = Guid.NewGuid().ToString("N");
                 string b64 = Convert.ToBase64String(File.ReadAllBytes(args[0]));
-                File.WriteAllText(Path.Combine(pend, id + ".js"), "window.__openPending(" + Json(Path.GetFileName(args[0])) + ",\"" + b64 + "\");");
+                pendingFile = Path.Combine(pend, id + ".js");
+                File.WriteAllText(pendingFile, "window.__openPending(" + Json(Path.GetFileName(args[0])) + ",\"" + b64 + "\");");
                 hash = "#open=" + id;
             }
 
@@ -71,6 +80,14 @@ static class Launcher
                     "--window-size=1400,900 --allow-file-access-from-files") { UseShellExecute = false });
             }
 
+            // the hand-over copy of the PDF is only needed while the window opens – don't leave it on disk
+            if (pendingFile != null)
+            {
+                string pf = pendingFile;
+                var cleanup = new Thread(() => { Thread.Sleep(60000); try { File.Delete(pf); } catch { } });
+                cleanup.IsBackground = isServer; cleanup.Start();
+                if (!isServer) cleanup.Join();
+            }
             if (isServer)
             {
                 // stay alive while any editor window keeps pinging us
@@ -105,8 +122,8 @@ static class Launcher
             while (true)
             {
                 var c = listener.AcceptTcpClient();
-                if (!busy.Wait(0)) { c.Close(); continue; } // too many at once - drop it
-                ThreadPool.QueueUserWorkItem(_ => { try { Handle(c); } catch { } finally { c.Close(); busy.Release(); } });
+                // wait briefly for a free slot instead of dropping: idle pre-opened browser connections time out quickly
+                ThreadPool.QueueUserWorkItem(_ => { if (!busy.Wait(20000)) { c.Close(); return; } try { Handle(c); } catch { } finally { c.Close(); busy.Release(); } });
             }
         });
         t.IsBackground = true;
@@ -115,8 +132,8 @@ static class Launcher
 
     static void Handle(TcpClient client)
     {
-        var s = client.GetStream();
-        s.ReadTimeout = 15000;
+        var s = client.GetStream(); allowOrigin = null;
+        s.ReadTimeout = 4000; // idle/speculative connections are closed quickly
         // read headers
         var head = new MemoryStream();
         int last4 = 0, b;
@@ -140,8 +157,12 @@ static class Launcher
         }
         string path = req[1], method = req[0];
         // only our own page (file:// -> Origin "null") talking to 127.0.0.1 - blocks DNS rebinding and other websites
-        if (host != "127.0.0.1:" + port || (origin != null && origin != "null")) { Reply(s, 403, "{}"); return; }
-        if (method == "OPTIONS") { Reply(s, 204, ""); return; }
+        // our page is a local file: browsers call that origin "file://" (or "null"); anything else is a website
+        bool ownPage = origin == "file://" || origin == "null";
+        if (host != "127.0.0.1:" + port || (origin != null && !ownPage)) { Reply(s, 403, "{}"); return; }
+        allowOrigin = ownPage ? origin : "null";
+        // browser permission check before sending an image ("preflight"): allow our own page on this computer only
+        if (method == "OPTIONS") { Reply(s, 204, "", ownPage ? "Access-Control-Allow-Private-Network: true\r\nAccess-Control-Max-Age: 600\r\n" : ""); return; }
         // check the secret before reading (and allocating) any body
         string q = path.Contains("?") ? path.Substring(path.IndexOf('?') + 1) : "";
         bool ok = false;
@@ -152,16 +173,16 @@ static class Launcher
         for (int got = 0; got < len;) { int n = s.Read(body, got, len - got); if (n <= 0) break; got += n; }
         Interlocked.Exchange(ref lastPing, DateTime.UtcNow.Ticks);
         if (path.StartsWith("/ping")) Reply(s, 200, "{\"ok\":true}");
-        else if (path.StartsWith("/ocr") && method == "POST") Reply(s, 200, Ocr(body));
+        else if (path.StartsWith("/ocr") && method == "POST") { ocrLock.Wait(); try { Reply(s, 200, Ocr(body)); } finally { ocrLock.Release(); } }
         else Reply(s, 404, "{}");
     }
 
-    static void Reply(NetworkStream s, int code, string json)
+    static void Reply(NetworkStream s, int code, string json, string extra = "")
     {
         byte[] data = Encoding.UTF8.GetBytes(json);
         string h = "HTTP/1.1 " + code + " OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: " + data.Length +
-            "\r\nAccess-Control-Allow-Origin: null\r\nAccess-Control-Allow-Headers: Content-Type\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
-            "Connection: close\r\n\r\n";
+            "\r\nAccess-Control-Allow-Origin: " + (allowOrigin ?? "null") + "\r\nAccess-Control-Allow-Headers: Content-Type\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
+            extra + "Connection: close\r\n\r\n";
         byte[] hb = Encoding.ASCII.GetBytes(h);
         s.Write(hb, 0, hb.Length);
         s.Write(data, 0, data.Length);

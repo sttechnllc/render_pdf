@@ -20,13 +20,19 @@ const csc = 'C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe';
 if (process.platform === 'win32' && fs.existsSync(csc)) {
   const exe = path.join(__dirname, 'dist', "Mark's Render PDF Editor.exe");
   fs.rmSync(exe, { force: true }); // never ship a stale exe if compiling fails
+  // the app goes into the exe gzip-compressed (about a third of the size); version comes from package.json
+  const os = require('os'), tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mrpdf-'));
+  const gz = path.join(tmp, 'PDFEditor.html.gz'), ver = path.join(tmp, 'Version.cs');
+  fs.writeFileSync(gz, require('zlib').gzipSync(fs.readFileSync(out), { level: 9 }));
+  fs.writeFileSync(ver, `static class AppInfo { public const string Version = "${require('./package.json').version}"; }`);
   require('child_process').execFileSync(csc, ['/nologo', '/target:winexe', '/optimize+',
     `/out:${exe}`, `/win32icon:${path.join(__dirname, 'launcher', 'icon.ico')}`,
-    `/resource:${out},PDFEditor.html`, '/r:System.Windows.Forms.dll',
+    `/resource:${gz},PDFEditor.html.gz`, '/r:System.Windows.Forms.dll',
     // Windows Runtime (for the built-in OCR engine)
     ...['Foundation', 'Media', 'Graphics', 'Storage'].map(n => `/r:C:/Windows/System32/WinMetadata/Windows.${n}.winmd`),
     '/r:C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Runtime.dll',
     '/r:C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Runtime.WindowsRuntime.dll',
-    path.join(__dirname, 'launcher', 'Launcher.cs')], { stdio: 'inherit' });
+    path.join(__dirname, 'launcher', 'Launcher.cs'), path.join(__dirname, 'launcher', 'Setup.cs'), ver], { stdio: 'inherit' });
+  fs.rmSync(tmp, { recursive: true, force: true });
   console.log('Built', exe, (fs.statSync(exe).size / 1048576).toFixed(2) + ' MB');
 } else if (process.env.CI) throw new Error('C# compiler not found: ' + csc);

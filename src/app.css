@@ -214,3 +214,5 @@ input.ff[type=checkbox],input.ff[type=radio]{accent-color:var(--accent)}
 .ztable td{padding:4px 8px;border-top:1px solid #f0f1f3;word-break:break-all}
 .ztable td:nth-child(n+3),.ztable th:nth-child(n+3){white-space:nowrap;word-break:normal}
 .ztable button{padding:2px 8px;font-size:12px}
+
+.textout{width:100%;height:300px;font:13px/1.4 Consolas,monospace;padding:8px;border:1px solid var(--line);border-radius:8px}

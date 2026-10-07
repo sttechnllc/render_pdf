@@ -35,8 +35,9 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item "dist/Mark's Render PDF Editor.exe" "dist/MarksRenderPDFEditor.exe"
+          Copy-Item "dist/Mark's Render PDF Editor.exe" "dist/MarksRenderPDFEditor-Setup.exe"  # same program; the name makes it install
           Compress-Archive -Path "dist/MarksRenderPDFEditor.exe" -DestinationPath "dist/MarksRenderPDFEditor-windows.zip" -Force
-          Get-FileHash dist/MarksRenderPDFEditor.exe, dist/MarksRenderPDFEditor-windows.zip, dist/PDFEditor.html -Algorithm SHA256 |
+          Get-FileHash dist/MarksRenderPDFEditor.exe, dist/MarksRenderPDFEditor-Setup.exe, dist/MarksRenderPDFEditor-windows.zip, dist/PDFEditor.html -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content dist/SHA256SUMS.txt
 
       - name: Upload build artifacts
@@ -44,6 +45,7 @@ jobs:
         with:
           name: marks-render-pdf-editor
           path: |
+            dist/MarksRenderPDFEditor-Setup.exe
             dist/MarksRenderPDFEditor.exe
             dist/MarksRenderPDFEditor-windows.zip
             dist/PDFEditor.html
@@ -55,6 +57,7 @@ jobs:
         with:
           generate_release_notes: true
           files: |
+            dist/MarksRenderPDFEditor-Setup.exe
             dist/MarksRenderPDFEditor.exe
             dist/MarksRenderPDFEditor-windows.zip
             dist/PDFEditor.html

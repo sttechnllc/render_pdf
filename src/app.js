@@ -7,11 +7,14 @@ const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle, BlendMode } = PD
   if (!src) return; // dev mode: worker script was loaded normally (main-thread fallback)
   try {
     const url = URL.createObjectURL(new Blob([src.textContent], { type: 'text/javascript' }));
-    pdfjsLib.GlobalWorkerOptions.workerPort = new Worker(url);
+    // one shared worker object: closing a document must never shut the worker down for the others
+    window.PDFW = new pdfjsLib.PDFWorker({ port: new Worker(url) });
   } catch (e) {
     const sc = document.createElement('script'); sc.textContent = src.textContent; document.head.append(sc);
   }
 })();
+// Open a PDF with pdf.js (always through the shared worker; eval disabled for safety)
+const pdfOpen = params => pdfjsLib.getDocument({ isEvalSupported: false, ...params, ...(window.PDFW ? { worker: window.PDFW } : {}) });
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
@@ -128,7 +131,7 @@ function updateButtons() {
 async function loadPdf(bytes, name) {
   let doc;
   try {
-    doc = await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+    doc = await pdfOpen({ data: bytes.slice(), isEvalSupported: false }).promise;
   } catch (e) {
     toast(e && e.name === 'PasswordException' ? `"${name}" is password-protected – remove the password first.` : `Could not open "${name}".`, 5000);
     throw e;
@@ -223,7 +226,7 @@ function erasedPage(p) {
     const doc = await PDFDocument.create(), [cp] = await doc.copyPages(await libFor(p.src), [p.idx]);
     doc.addPage(cp);
     const hits = eraseText(doc, cp, p.erase);
-    const pdf = await pdfjsLib.getDocument({ data: await doc.save(), isEvalSupported: false }).promise;
+    const pdf = await pdfOpen({ data: await doc.save(), isEvalSupported: false }).promise;
     return { pg: await pdf.getPage(1), hits, pdf };
   })());
   // keep a couple of versions per page (undo/redo), destroy older ones so memory doesn't grow
@@ -523,7 +526,7 @@ async function extractPages() {
   if (ids.length < 2) {
     const txt = prompt('Which pages do you want to save as a new PDF?\nExamples:  3   or   1-4   or   1, 3, 7-9', ids.length ? S.pages.findIndex(p => p.id === ids[0]) + 1 : S.current + 1);
     if (!txt) return;
-    ids = parseRange(txt.replace(/\s*-\s*/g, '-'), S.pages.length).map(i => S.pages[i].id);
+    ids = parseRange(String(txt).replace(/\s*-\s*/g, '-'), S.pages.length).map(i => S.pages[i].id);
   }
   if (!ids.length) return toast('No pages matched.');
   commitEditing(); toast('Preparing…');
@@ -859,7 +862,7 @@ sc.addEventListener('pointerdown', e => {
   let last = P(e); sigDrawn = true;
   sctx.strokeStyle = sigInk; sctx.lineCap = sctx.lineJoin = 'round';
   sctx.fillStyle = sigInk; sctx.beginPath(); sctx.arc(last[0], last[1], 1.4, 0, 7); sctx.fill();
-  sc.setPointerCapture(e.pointerId);
+  try { sc.setPointerCapture(e.pointerId); } catch { }
   const mv = ev => {
     for (const ce of (ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev])) {
       const q = P(ce), dist = Math.hypot(q[0] - last[0], q[1] - last[1]);
@@ -1950,7 +1953,16 @@ setTimeout(() => { const u = helperUrl('ping'); if (u) fetch(u).catch(() => {});
 async function copyToClipboard(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch { }
   const t = el('textarea'); t.value = text; document.body.append(t); t.select();
-  const ok = document.execCommand('copy'); t.remove(); return ok;
+  let ok = false; try { ok = document.execCommand('copy'); } catch { }
+  t.remove();
+  if (!ok) showTextBox(text); // Windows refused the clipboard: show the text so it can be copied by hand
+  return ok;
+}
+function showTextBox(text) {
+  $('#tmodal').hidden = false; $('#tProg').hidden = true; $('#tMsg').textContent = '';
+  $('#tTitle').textContent = '📋 Text'; $('#tBack').hidden = true; $('#tRun').hidden = true;
+  $('#tBody').innerHTML = '<p class="muted">Select the text and press Ctrl+C:</p><textarea class="textout" readonly></textarea>';
+  const ta = $('#tBody textarea'); ta.value = text; ta.focus(); ta.select();
 }
 // Render part of a page (display coords, scale 1) to a canvas at k× resolution
 async function renderRegion(p, b, k) {
@@ -1992,7 +2004,9 @@ async function ocrRegion(p, b) {
   const k = Math.min(4, Math.max(2, 1600 / Math.max(b.w, b.h)));
   const c = await renderRegion(p, b, k);
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-  const res = await (await fetch(u, { method: 'POST', body: blob })).json();
+  let res;
+  try { res = await (await fetch(u, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/png' } })).json(); }
+  catch { throw new Error("Couldn't reach the text-recognition helper. Close the editor and open it again (from the .exe)."); }
   if (res.error) throw new Error(res.error);
   const fix = t => t.replace(/(\d) ([,.]\d)/g, '$1$2').replace(/ ([,.;:!?])(\s|$)/g, '$1$2');
   return res.lines.map(l => ({ text: fix(l.text), x: b.x + l.x / k, y: b.y + l.y / k, w: l.w / k, h: l.h / k }));
@@ -2027,7 +2041,7 @@ async function areaAction(act) {
       let how = 'from the PDF';
       if (!txt.trim()) { toast('Reading the image…'); txt = (await ocrRegion(p, b)).map(l => l.text).join('\n'); how = 'with OCR'; }
       if (!txt.trim()) return toast('No text found in that area.');
-      await copyToClipboard(txt);
+      if (!(await copyToClipboard(txt))) return;
       toast(`Copied ${txt.length} characters ${how}: “${txt.slice(0, 60).replace(/\n/g, ' ')}${txt.length > 60 ? '…' : ''}”`, 4000);
     } else if (act === 'image') {
       const c = await renderRegion(p, b, 3);
