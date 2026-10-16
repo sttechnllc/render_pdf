@@ -57,6 +57,17 @@ IT/scripted installs: `MarksRenderPDFEditor-Setup.exe --quiet` (silent), uninsta
 **Navigation**
 - Contents/bookmarks, a smart headings index, go to page, zoom.
 
+**Get signatures (DocuSign-style, free)**
+- Add signers, place Signature / Initials / Date / Name / Text / Checkbox fields, press Send.
+- Signers need no account or install: they open the link https://sttechnllc.github.io/render_pdf/?sign, drop in the PDF and follow Start → Next → Finish.
+- Signing order, consent step, certificate of completion page, and tamper detection.
+
+**Smart organize & shared data room (no AI, nothing uploaded)**
+- Recognises document types, dates, parties, amounts and numbers; renames and files them into folders.
+- Finds duplicates and near-duplicates, checks for missing signatures, links amendments to their agreement.
+- Spreadsheet index (CSV/Excel) and a bookmarked binder PDF.
+- Data room: open a folder shared through OneDrive, Google Drive, Dropbox, SharePoint or a network drive and organize it in place, with preview, undo, a shared index, conflict-copy detection and an edit lock.
+
 **Tools**
 - Shrink PDF · extract images to ZIP · convert to images / Word / text / Markdown
 - OCR a whole document into a searchable PDF
