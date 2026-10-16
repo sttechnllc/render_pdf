@@ -465,8 +465,10 @@ async function orgAnalyze(f) {
 }
 function orgNames() {
   for (const r of ORG.items) if (!r.custom) r.newName = r.scan || r.err ? r.name : renderName(ORG.pattern, r);
-  const order = orgOrder(), uniq = uniquePaths(order.map(i => orgFolder(ORG.items[i]) + ORG.items[i].newName));
-  order.forEach((i, k) => { ORG.items[i].out = uniq[k]; });
+  // files that will really be saved get the plain names first; left-out duplicates only get (2), (3)…
+  const pri = orgOrder().sort((a, b) => (ORG.items[a].dupGroup && !ORG.items[a].dupKeep) - (ORG.items[b].dupGroup && !ORG.items[b].dupKeep));
+  const uniq = uniquePaths(pri.map(i => orgFolder(ORG.items[i]) + ORG.items[i].newName));
+  pri.forEach((i, k) => { ORG.items[i].out = uniq[k]; });
 }
 const orgPost = () => { chooseParty(ORG.items); groupDuplicates(ORG.items); linkRelations(ORG.items); orgNames(); };
 function orgFolder(r) {
@@ -621,8 +623,12 @@ function fsaAdapter(root) {
     exists: p => fh(p).then(() => true, () => false),
     async move(a, b) { // create the destination, write, then remove the old entry (FileSystemHandle.move() when the browser has it)
       const h = await fh(a);
-      if (h.move) try { await h.move(await dir(b, true), split(b).pop()); return; } catch (e) { console.warn('move() failed – copying instead', e); }
-      await ad.write(b, await h.getFile()); await ad.remove(a);
+      if (await ad.exists(b)) throw new Error('Refusing to replace an existing file: ' + b); // never overwrite anything
+      const size = (await h.getFile()).size;
+      let moved = false;
+      if (h.move) try { await h.move(await dir(b, true), split(b).pop()); moved = true; } catch (e) { console.warn('move() failed – copying instead', e); }
+      if (!moved) { await ad.write(b, await h.getFile()); if ((await ad.file(b)).size !== size) throw new Error('Copy check failed for ' + b); await ad.remove(a); }
+      else if ((await ad.file(b)).size !== size) throw new Error('Move check failed for ' + b);
     },
     remove: async p => (await dir(p)).removeEntry(split(p).pop()),
     rmdir: async p => (await dir(p)).removeEntry(split(p).pop()), // throws when not empty – that is the point
@@ -723,6 +729,6 @@ async function orgBinder(items, prog) {
 
 if (typeof TOOLS !== 'undefined') {
   const at = TOOLS.findIndex(t => t.id === 'batch');
-  TOOLS.splice(at < 0 ? TOOLS.length : at + 1, 0, { id: 'organize', icon: '🗂', name: 'Smart organize', noDoc: true, custom: orgUI,
+  TOOLS.splice(at < 0 ? TOOLS.length : at + 1, 0, { id: 'smartorg', icon: '🗂', name: 'Smart organize', noDoc: true, custom: orgUI,
     desc: 'Sort a pile of PDFs: type, date, parties, smart names, folders, duplicates, missing signatures, index and binder.' });
 }

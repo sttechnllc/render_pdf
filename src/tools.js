@@ -798,7 +798,7 @@ async function isBlank(p) {
   return ink / (px.length / 4) < 0.0003; // practically nothing printed on it
 }
 TOOLS.push(
-  { id: 'organize', icon: '🗂', name: 'Organize pages', desc: 'Remove blank pages, reverse, keep odd/even, duplicate.',
+  { id: 'organize', icon: '📑', name: 'Organize pages', desc: 'Remove blank pages, reverse, keep odd/even, duplicate.',
     form: `<label>Do this <select name="act"><option value="blank">Remove blank pages</option><option value="reverse">Reverse page order</option><option value="odd">Keep only odd pages (1, 3, 5…)</option><option value="even">Keep only even pages (2, 4, 6…)</option><option value="dup">Duplicate selected pages (or the current page)</option></select></label>
       <p class="muted">Changes the open document – Ctrl+Z undoes it.</p>`,
     async run(o, prog) {
