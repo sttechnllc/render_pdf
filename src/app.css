@@ -278,3 +278,37 @@ input.ff[type=checkbox],input.ff[type=radio]{accent-color:var(--accent)}
 .sg-consent{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;background:#f8fafc;line-height:1.45}
 .sg-consent input{margin-top:4px;transform:scale(1.25)}
 .signinfo{line-height:1.5}
+
+/* smart organize */
+.owrap{max-height:340px}
+.otable{font-size:12px}
+.otable td{vertical-align:top}
+.otable td.odoc{word-break:break-word;min-width:230px}
+.oorig{font-weight:600}
+.onew{display:flex;align-items:center;gap:2px;margin-top:2px}
+.onew input{flex:1;min-width:120px;font-size:12px;padding:2px 5px}
+.opty{max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.osig{text-align:center;cursor:help}
+.ochip{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#f1f2f4;color:#374151}
+.ochip[data-g=money]{background:#dcfce7;color:#166534}
+.ochip[data-g=legal]{background:#dbe6fd;color:#1e3a8a}
+.ochip[data-g=mail]{background:#fef3c7;color:#92400e}
+.oconf{font-size:10px;margin-top:2px;color:var(--muted)}
+.oconf.cHigh{color:#15803d}.oconf.cLow{color:#b45309}
+.obadge{display:inline-block;padding:1px 6px;border-radius:6px;font-size:11px;background:#f3f4f6;color:#6b7280;cursor:help}
+.obadge.keep{background:#dcfce7;color:#166534}
+.otoks{display:flex;flex-wrap:wrap;gap:3px}
+.otoks button{padding:2px 6px;font-size:11px;font-family:Consolas,monospace}
+#oPat{min-width:280px;font-family:Consolas,monospace}
+.obtns{flex-wrap:wrap;row-gap:6px}.obtns label{white-space:nowrap}
+.oroom{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:8px 0;background:#f8fafc}
+.oroom .row{flex-wrap:wrap;row-gap:6px}
+.owarnbox{margin-top:6px;padding:6px 10px;border-radius:8px;background:#fef3c7;color:#92400e}
+.oplan{margin-top:8px;max-height:220px;overflow:auto;font-size:12px}
+.oplan ol{margin:6px 0;padding-left:22px}.oplan li{word-break:break-word}
+.ofilter{flex-wrap:wrap;gap:4px}
+.ofilter button{padding:3px 10px;border-radius:14px;font-size:12px}
+.ofilter button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ofilter input{flex:1;min-width:160px}
+.owarn{color:#b45309;cursor:help}
+.onewb{display:inline-block;padding:0 5px;border-radius:5px;font-size:10px;background:#dbe6fd;color:#1e3a8a;font-weight:600}
