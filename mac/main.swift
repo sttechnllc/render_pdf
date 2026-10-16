@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         case "saveFolder": saveFolder(body, reply)
         case "print": printPdf(body["b64"] as? String ?? "", reply)
         case "font": font(body["ps"] as? String ?? "", reply)
+        case "mail": mail(body, reply)
         default: reply(nil, "Unknown command: \(cmd)")
         }
     }
@@ -197,6 +198,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
         else { return reply(nil, "Could not prepare the document for printing.") }
         op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
         reply(true, nil)
+    }
+
+    // New email in Apple Mail (or the default mail app) with the PDF attached
+    func mail(_ body: [String: Any], _ reply: @escaping (Any?, String?) -> Void) {
+        guard let data = Data(base64Encoded: body["b64"] as? String ?? ""), let svc = NSSharingService(named: .composeEmail) else { return reply(false, nil) }
+        let name = ((body["name"] as? String) ?? "document.pdf").replacingOccurrences(of: "/", with: "-")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("MarksRenderPDF-mail-" + UUID().uuidString.prefix(8))
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
+        guard (try? data.write(to: url)) != nil else { return reply(false, nil) }
+        let to = ((body["to"] as? String) ?? "") + "," + ((body["cc"] as? String) ?? "")
+        svc.recipients = to.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        svc.subject = body["subject"] as? String ?? ""
+        let items: [Any] = [(body["body"] as? String ?? "") as NSString, url as NSURL]
+        if svc.canPerform(withItems: items) { svc.perform(withItems: items); reply(true, nil) } else { reply(false, nil) }
     }
 
     // Full version of a font the PDF only partly contains (single .ttf/.otf files only)

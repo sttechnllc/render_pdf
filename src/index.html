@@ -24,6 +24,7 @@
     </div>
     <span class="sp"></span>
     <div class="grp">
+      <button id="bRequest" class="req-btn" title="Send this PDF to people to sign – free, no accounts">📨 <span class="bl">Get signatures</span></button>
       <button id="bFind" title="Advanced search (Ctrl+F)">🔍 <span class="bl">Search</span></button>
       <button id="bFill" title="Auto-fill name, address, DOB… from a saved profile">👤 <span class="bl">Auto-fill</span></button>
       <button id="bTools" class="tools-btn" title="Shrink, convert, extract images, OCR, split, ZIP, page numbers, compare, batch…">🧰 <span class="bl">Tools</span></button>
@@ -84,7 +85,7 @@
 
 <main>
   <aside id="side">
-    <div id="sideTabs"><button data-t="pages" class="on">📄 Pages</button><button data-t="contents">📑 Contents</button><button data-t="search">🔍 Search</button></div>
+    <div id="sideTabs"><button data-t="pages" class="on">📄 Pages</button><button data-t="contents">📑 Contents</button><button data-t="search">🔍 Search</button><button data-t="sign">✍ Sign</button></div>
     <div class="pane" data-t="pages">
     <div class="sidehead">
       <b>Pages</b>
@@ -98,6 +99,7 @@
     <div class="sidetip">Drag to reorder · Ctrl/Shift-click to select · drop files here to insert</div>
     <div id="thumbs"></div>
     </div>
+    <div class="pane" data-t="sign" hidden><div class="sbox" id="signPane"></div></div>
     <div class="pane" data-t="contents" hidden>
       <div class="sidetip">Bookmarks of the PDF – or, if it has none, its headings. Click to jump.</div>
       <div id="tocList"></div>
@@ -243,5 +245,6 @@
 <script src="../node_modules/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
 <script src="app.js"></script>
 <script src="tools.js"></script>
+<script src="sign.js"></script>
 </body>
 </html>

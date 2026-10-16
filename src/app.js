@@ -57,6 +57,7 @@ const HINTS = {
   check: 'Click to place a check mark.',
   cross: 'Click to place an X.',
   date: "Click to place today's date.",
+  field: 'Click on the page where this field should go. Drag to move, corner to resize.',
   area: 'Drag a box around anything: copy its text (OCR for scans), copy as image, move or duplicate it.',
 };
 
@@ -186,6 +187,7 @@ async function openFiles(files) {
   S.fileHandle = null; S.forms = {}; S.formsDirty = {}; S.meta = null; updateTitle();
   fitWidth(true); refreshAll(); setTool('select');
   backgroundIndex();
+  if (typeof signOnOpen === 'function') signOnOpen();
 }
 // Quietly read every page's text while the user looks at the document → the first search is instant
 async function backgroundIndex() {
@@ -217,6 +219,7 @@ function newBlank() {
   S.fileHandle = null; S.forms = {}; S.formsDirty = {};
   S.pages = [{ id: nid(), src: -1, idx: 0, baseRot: 0, rot: 0, w: 612, h: 792, annots: [] }];
   S.undo = []; S.redo = []; S.name = 'document.pdf'; S.dirty = true; updateTitle(); fitWidth(true); refreshAll();
+  if (typeof signOnOpen === 'function') signOnOpen();
 }
 
 /* ---------------- rendering ---------------- */
@@ -334,6 +337,10 @@ function annotEl(a) {
     if (a.type === 'rect') {
       e.style.background = a.color; e.style.opacity = a.op ?? 1;
       if (a.blend) e.style.mixBlendMode = a.blend;
+    } else if (a.type === 'field') {
+      e.classList.add('field'); if (a.mine) e.classList.add('mine');
+      e.style.setProperty('--fc', a.color || '#f59e0b');
+      const t = el('span'); t.textContent = a.label || ''; e.append(t);
     } else if (a.type === 'image' || a.type === 'clip') {
       const i = el('img'); i.src = S.images[a.img]; i.draggable = false; e.append(i);
     } else if (a.type === 'ink') {
@@ -672,6 +679,7 @@ $('#pages').addEventListener('pointerdown', ev => {
   /* select / move existing item */
   if (ae && !drawing) {
     const a = p.annots.find(x => x.id === ae.dataset.id);
+    if (a.type === 'field' && SG.mode === 'sign') { ev.preventDefault(); if (a.mine) fillField(p, a); return; }
     if (ae.isContentEditable) return; // let the caret move while typing
     ev.preventDefault(); commitEditing();
     const was = S.sel === a.id; select(a.id);
@@ -724,6 +732,7 @@ $('#pages').addEventListener('pointerdown', ev => {
       addAnnot(p, { id: nid(), type: 'ink', x: s.x - sz / 2, y: s.y - sz / 2, w: sz, h: sz, strokes: INK[S.tool], color: def.color, lw: def.lw }, true);
       return;
     }
+    case 'field': placeField(p, s); return;
     case 'place': {
       const st = S.stamp; if (!st) return;
       addAnnot(p, { id: nid(), type: 'image', img: st.img, x: s.x - st.w / 2, y: s.y - st.h / 2, w: st.w, h: st.h });
@@ -1040,7 +1049,7 @@ function openSig() {
     const d = el('div', 'sv'); d.innerHTML = `<img src="${u}"><button class="x" title="Forget this signature">✕</button>`;
     d.onclick = e => {
       if (e.target.classList.contains('x')) { const v = sigStore.get(); v.splice(i, 1); sigStore.set(v); return openSig(); }
-      closeSig(); useStamp(u, true);
+      closeSig(); useStamp(u, true, 'saved');
     };
     $('#savedSigs').append(d);
   });
@@ -1049,7 +1058,7 @@ function openSig() {
 }
 function closeSig() { $('#modal').hidden = true; }
 $('#bSign').onclick = openSig;
-$('#sigCancel').onclick = closeSig;
+$('#sigCancel').onclick = () => { window.onSignatureChosen = null; closeSig(); };
 $('#modal').addEventListener('pointerdown', e => { if (e.target.id === 'modal') closeSig(); });
 $$('.tabs button').forEach(b => b.onclick = () => {
   sigTab = b.dataset.tab;
@@ -1125,9 +1134,10 @@ $('#sigUse').onclick = async () => {
   const url = await makeSignature();
   if (!url) return toast(sigTab === 'draw' ? 'Draw your signature in the box first.' : sigTab === 'type' ? 'Type your name first.' : 'Choose an image first.');
   if ($('#sigRemember').checked) { const v = sigStore.get(); if (!v.includes(url)) { v.unshift(url); sigStore.set(v.slice(0, 8)); } }
-  closeSig(); useStamp(url, true);
+  closeSig(); useStamp(url, true, sigTab);
 };
-async function useStamp(url, sig) {
+async function useStamp(url, sig, method) {
+  if (window.onSignatureChosen) { const cb = window.onSignatureChosen; window.onSignatureChosen = null; return cb(url, method || 'saved'); }
   const img = await loadImg(url);
   const w = sig ? 170 : Math.min(300, img.naturalWidth * 0.75);
   S.stamp = { img: registerImage(url), w, h: w * img.naturalHeight / img.naturalWidth, sig };
@@ -1508,7 +1518,7 @@ function cleanText(s, font) {
   }
   return o;
 }
-async function buildPdf(list) {
+async function buildPdf(list, opts = {}) {
   const out = await PDFDocument.create();
   const libs = {}, fonts = {}, imgs = {}, sysFonts = {};
   out.registerFontkit(fontkit);
@@ -1605,7 +1615,7 @@ async function buildPdf(list) {
     if (m.title) out.setTitle(m.title); if (m.author) out.setAuthor(m.author); if (m.subject) out.setSubject(m.subject);
     if (m.keywords) out.setKeywords(m.keywords.split(',').map(k => k.trim()).filter(Boolean));
   } else { const s0 = S.sources.find(Boolean); try { const info = s0 && (await s0.doc.getMetadata()).info; if (info?.Title) out.setTitle(info.Title); if (info?.Author) out.setAuthor(info.Author); } catch { } }
-  return out.save();
+  return out.save(opts.classic ? { useObjectStreams: false } : undefined);
 }
 async function saveBytes(bytes, name, remember) {
   if (NATIVE) {
@@ -2028,6 +2038,7 @@ function showSideTab(t) {
   $$('.pane').forEach(p => p.hidden = p.dataset.t !== t);
   $('#side').classList.toggle('wide', t !== 'pages');
   if (t === 'contents') buildContents();
+  if (t === 'sign' && typeof renderSignPane === 'function') renderSignPane();
 }
 $$('#sideTabs button').forEach(b => b.onclick = () => showSideTab(b.dataset.t));
 

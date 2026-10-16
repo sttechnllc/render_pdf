@@ -208,6 +208,7 @@ static class Launcher
         for (int got = 0; got < len;) { int n = s.Read(body, got, len - got); if (n <= 0) break; got += n; }
         Interlocked.Exchange(ref lastPing, DateTime.UtcNow.Ticks);
         if (path.StartsWith("/ping")) Reply(s, 200, "{\"ok\":true}");
+        else if (path.StartsWith("/mail") && method == "POST") Reply(s, 200, Mailer.Send(body)); // email with the PDF attached
         else if (path.StartsWith("/ocr") && method == "POST") { ocrLock.Wait(); try { Reply(s, 200, Ocr(body)); } finally { ocrLock.Release(); } }
         else Reply(s, 404, "{}");
     }

@@ -245,3 +245,36 @@ input.ff[type=checkbox],input.ff[type=radio]{accent-color:var(--accent)}
 #hint{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 #props .sp{display:none}
 #props label,#props button,#pageLbl{flex:none}
+
+/* signatures (DocuSign-style) */
+.req-btn{background:#ecfdf5;border-color:#6ee7b7}
+.an.field{border:2px dashed var(--fc);background:color-mix(in srgb,var(--fc) 16%,transparent);border-radius:4px;display:flex;align-items:center;padding:0 5px;overflow:hidden;font:600 11px/1.1 "Segoe UI",sans-serif;color:color-mix(in srgb,var(--fc) 70%,#000)}
+.an.field span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.an.field.mine{border-style:solid;background:#fef9c3;color:#854d0e;cursor:pointer;box-shadow:0 0 0 3px #facc1544}
+.an.field.pulse{animation:fpulse 1.2s ease-in-out 3}
+@keyframes fpulse{0%,100%{box-shadow:0 0 0 3px #facc1544}50%{box-shadow:0 0 0 9px #facc1588}}
+.tool-field .page{cursor:copy}
+#signBar{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);font-size:14px;flex-wrap:wrap}
+#signBar.pending{background:#fffbeb}
+#signBar.signing{background:#fef9c3}
+#signBar.complete{background:#ecfdf5}
+#signBar .sp{flex:1}
+.sg-good{color:#15803d;font-weight:600}
+.sg-bad{color:#b91c1c;font-weight:600}
+.sg-h{font-size:16px;font-weight:700}
+.sg-sub{font-weight:600;font-size:13px;margin-top:6px}
+.sg-l{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
+#signPane input{min-width:0;flex:1}
+.sg-signer{display:flex;gap:4px;align-items:center;margin-bottom:4px}
+.sg-signer input{width:0;flex:1}
+.sg-dot{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;color:#fff;font-size:11px;font-weight:700;flex:none}
+.sg-fields{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.sg-fields button{text-align:left;font-size:12.5px}
+.sg-send{width:100%;padding:9px;font-size:14px;margin-top:6px}
+.sg-steps{display:flex;flex-direction:column;gap:8px;margin:8px 0}
+.sg-step{display:flex;gap:8px;align-items:center;padding:6px;border-radius:8px}
+.sg-step.now{background:#fffbeb;outline:1px solid #fcd34d}
+.sg-step.done{opacity:.85}
+.sg-consent{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;background:#f8fafc;line-height:1.45}
+.sg-consent input{margin-top:4px;transform:scale(1.25)}
+.signinfo{line-height:1.5}

@@ -27,12 +27,12 @@ if (process.platform === 'win32' && fs.existsSync(csc)) {
   fs.writeFileSync(ver, `static class AppInfo { public const string Version = "${require('./package.json').version}"; }`);
   require('child_process').execFileSync(csc, ['/nologo', '/target:winexe', '/optimize+',
     `/out:${exe}`, `/win32icon:${path.join(__dirname, 'launcher', 'icon.ico')}`,
-    `/resource:${gz},PDFEditor.html.gz`, `/resource:${path.join(__dirname, 'launcher', 'icon-256.png')},logo.png`, '/r:System.Windows.Forms.dll', '/r:System.Drawing.dll',
+    `/resource:${gz},PDFEditor.html.gz`, `/resource:${path.join(__dirname, 'launcher', 'icon-256.png')},logo.png`, '/r:System.Windows.Forms.dll', '/r:System.Drawing.dll', '/r:System.Web.Extensions.dll',
     // Windows Runtime (for the built-in OCR engine)
     ...['Foundation', 'Media', 'Graphics', 'Storage'].map(n => `/r:C:/Windows/System32/WinMetadata/Windows.${n}.winmd`),
     '/r:C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Runtime.dll',
     '/r:C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Runtime.WindowsRuntime.dll',
-    path.join(__dirname, 'launcher', 'Launcher.cs'), path.join(__dirname, 'launcher', 'Setup.cs'), path.join(__dirname, 'launcher', 'Taskbar.cs'), ver], { stdio: 'inherit' });
+    path.join(__dirname, 'launcher', 'Launcher.cs'), path.join(__dirname, 'launcher', 'Setup.cs'), path.join(__dirname, 'launcher', 'Taskbar.cs'), path.join(__dirname, 'launcher', 'Mail.cs'), ver], { stdio: 'inherit' });
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log('Built', exe, (fs.statSync(exe).size / 1048576).toFixed(2) + ' MB');
 } else if (process.env.CI && process.platform === 'win32') throw new Error('C# compiler not found: ' + csc);
