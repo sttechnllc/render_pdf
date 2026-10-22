@@ -22,7 +22,10 @@ const latin1 = b => { let s = ''; for (let i = 0; i < b.length; i += 65536) s +=
 const b64u = s => btoa(unescape(encodeURIComponent(s))), unb64u = s => decodeURIComponent(escape(atob(s)));
 const pdfHexStr = s => '<FEFF' + [...s].map(c => { const n = c.codePointAt(0); const h = x => x.toString(16).padStart(4, '0'); if (n < 0x10000) return h(n); const m = n - 0x10000; return h(0xD800 + (m >> 10)) + h(0xDC00 + (m & 1023)); }).join('') + '>';
 const signerOf = (req, id) => req.signers.find(s => s.id === id);
-const nextSigner = req => req.signers.find(s => !req.steps.some(st => st.signer === s.id)) || null;
+const sameEmail = (a, b) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+const isSender = (req, s) => !!s && sameEmail(s.email, req.from?.email); // this signer sent the request
+const isMe = s => !!s && sameEmail(s.email, senderProfile.get().email);   // this signer is whoever uses this app
+const nextSigner = req =>req.signers.find(s => !req.steps.some(st => st.signer === s.id)) || null;
 const fmtWhen = iso => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const senderProfile = { get() { try { return JSON.parse(localStorage.getItem('pdfeditor.sender')) || {}; } catch { return {}; } }, set(v) { try { localStorage.setItem('pdfeditor.sender', JSON.stringify(v)); } catch { } } };
 
@@ -153,7 +156,7 @@ function renderSignPane() {
     <div class="row tight"><input id="sgFromName" placeholder="Your name"><input id="sgFromEmail" placeholder="Your email" type="email"></div>
     <div class="sg-sub">Signers <span class="muted small">(sign in this order)</span></div>
     <div id="sgSigners"></div>
-    <button id="sgAdd" class="chip">＋ Add signer</button>
+    <button id="sgAdd" class="chip">＋ Add signer</button> <button id="sgMe" class="chip" title="Add yourself – you sign right here in the app, no email to yourself">＋ Add me</button>
     <div class="sg-sub">Fields for <select id="sgActive"></select></div>
     <div class="sg-fields">${Object.entries(FIELD_TYPES).map(([k, f]) => `<button data-f="${k}" class="${S.tool === 'field' && SG.ftype === k ? 'on' : ''}">${f.icon} ${f.label}</button>`).join('')}</div>
     <p class="muted small">Pick a field, then click on the page where it goes. Drag to move, corner to resize, Del to remove.</p>
@@ -185,6 +188,16 @@ function renderSignPane() {
   fillActive();
   $('#sgActive').onchange = e => { SG.active = e.target.value; };
   $('#sgAdd').onclick = () => { const s = { id: nid(), name: '', email: '', color: SIGNER_COLORS[d.signers.length % SIGNER_COLORS.length] }; d.signers.push(s); SG.active = s.id; renderSignPane(); $$('#sgSigners input')[d.signers.length * 2 - 2]?.focus(); };
+  $('#sgMe').onclick = () => {
+    const me = d.from.email && d.signers.find(s => s.email.toLowerCase() === d.from.email.toLowerCase());
+    if (me) { SG.active = me.id; return renderSignPane(); }
+    const blank = d.signers.find(s => !s.name && !s.email);
+    const s = blank || { id: nid(), color: SIGNER_COLORS[d.signers.length % SIGNER_COLORS.length] };
+    s.name = d.from.name; s.email = d.from.email;
+    if (!blank) d.signers.push(s);
+    SG.active = s.id; relabelFields(); renderSignPane();
+    if (!d.from.name || !d.from.email) toast('Fill in your name and email above first.');
+  };
   $$('.sg-fields button').forEach(b => b.onclick = () => { SG.ftype = b.dataset.f; setTool('field'); renderSignPane(); });
   $('#sgSend').onclick = sendForSigning;
 }
@@ -212,8 +225,16 @@ async function sendForSigning() {
   };
   toast('Preparing the document…');
   const bytes = await buildSignedPdf(req), name = `${req.title} - please sign.pdf`;
-  if (!(await saveAny(bytes, name))) return;
   const first = req.signers[0];
+  if (isSender(req, first)) {
+    // the sender signs first: do it right here instead of emailing themselves
+    S.dirty = false;
+    await openFiles([new File([bytes], name, { type: 'application/pdf' })]);
+    for (let i = 0; i < 50 && !SG.req; i++) await new Promise(r => setTimeout(r, 100)); // the request is read just after the file opens
+    if (SG.req && nextSigner(SG.req)?.id === first.id) { startSigning(); toast('Your turn – fill in your fields, then press Finish.', 5000); }
+    return;
+  }
+  if (!(await saveAny(bytes, name))) return;
   const how = await sendMail({ to: first.email, subject: `Please sign: ${req.title}`, name, bytes, body:
 `Hi ${first.name},
 
@@ -278,7 +299,7 @@ function renderSignBar() {
     return;
   }
   bar.innerHTML = `<b>📝 Signature request</b><span>“${escHtml(r.title)}” from ${escHtml(r.from.name)} · ${done} of ${n} signed · next: <b>${escHtml(next.name)}</b></span>${integrity}<span class="sp"></span>
-    <button id="sbStart" class="pri">✍ I'm ${escHtml(next.name)} – start signing</button>${done ? `<button id="sbMail" title="Send this copy to ${escHtml(next.name)}">📧 Email to ${escHtml(next.name)}</button>` : ''}`;
+    <button id="sbStart" class="pri">${isMe(next) ? '✍ Sign now (it\'s your turn)' : `✍ I'm ${escHtml(next.name)} – start signing`}</button>${done && !isMe(next) ?`<button id="sbMail" title="Send this copy to ${escHtml(next.name)}">📧 Email to ${escHtml(next.name)}</button>` : ''}`;
   $('#sbStart').onclick = startSigning;
   $('#sbMail') && ($('#sbMail').onclick = () => forwardTo(next));
 }
@@ -375,6 +396,8 @@ async function completeSigning() {
   const name = `${r.title} - signed by ${me.name}.pdf`;
   if (!(await saveAny(bytes, name))) { toast('Not saved – you can press Finish again.'); r.steps.pop(); return; }
   S.dirty = false; updateTitle(); SG.received = await sha256(bytes); SG.ok = true;
+  if (!next && isSender(r, me)) { renderSignBar(); renderSignPane(); return toast('✔ Signed & saved – everyone has signed.', 5000); }
+  if (next && isMe(next) && isSender(r, next)) { renderSignBar(); renderSignPane(); return toast('Saved – it\'s your turn next: press "Sign now".', 5000); }
   const how = next
     ? await sendMail({ to: next.email, cc: r.from.email, subject: `Please sign: ${r.title}`, name, bytes, body:
 `Hi ${next.name},
