@@ -291,7 +291,7 @@ async function signOnOpen() {
     if (r) {
       SG.req = r.req; SG.ok = r.ok; SG.received = await sha256(src.bytes);
       if (r.req.certPages) { S.pages.splice(S.pages.length - r.req.certPages, r.req.certPages); refreshAll(); } // rebuilt when signing
-      showSideTab('sign');
+      if (!(innerWidth <= 760)) showSideTab('sign'); // phones: the bottom bar is enough
     }
   }
   renderSignBar(); renderSignPane();
@@ -338,6 +338,7 @@ function myFields() { const out = []; S.pages.forEach(p => p.annots.forEach(a =>
 function startSigning() {
   const r = SG.req, me = nextSigner(r); if (!me) return;
   SG.mode = 'sign'; SG.me = me.id; SG.method = '';
+  if (innerWidth <= 760) setSide(false); // phones: room for the document
   for (const f of r.fields) {
     if (f.signer !== me.id || f.done) continue;
     const p = S.pages[f.page]; if (!p) continue;

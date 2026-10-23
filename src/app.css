@@ -318,3 +318,29 @@ body>*:not(main){flex:none}
 #side{flex:none;min-width:0;overflow:hidden}
 #sideTabs button{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .sidehead{flex-wrap:wrap}
+
+/* ---------------- phones ---------------- */
+/* touch: one finger scrolls the page; items and drawing tools take the finger instead */
+.page{touch-action:pan-x pan-y pinch-zoom}
+.an,body:not(.tool-select):not(.tool-field) .page{touch-action:none}
+@media (max-width:760px){
+  html,body{font-size:15px}
+  #bar .row1,#bar .row2{gap:6px;padding:5px 8px}
+  #bar .bl,.brand span{display:none}
+  #bar button{padding:7px 9px;min-height:38px}
+  .grp{padding-right:6px}
+  #props{overflow-x:auto;scrollbar-width:none;gap:8px;padding:4px 8px;min-height:0}
+  #props::-webkit-scrollbar{display:none}
+  #hint{display:none}
+  main{position:relative}
+  /* the side panel slides over the page instead of squeezing it */
+  #side,#side.wide{position:absolute;left:0;top:0;bottom:0;z-index:40;width:min(340px,88vw);box-shadow:4px 0 24px #0003}
+  #pages{padding:12px 8px 140px;gap:12px}
+  /* the signing bar sits at the bottom, under the thumb */
+  #signBar{position:fixed;left:0;right:0;bottom:0;z-index:45;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);box-shadow:0 -4px 16px #0002;font-size:14px}
+  #signBar>span:not(.sp){flex:1 1 100%;font-size:13px}
+  #signBar button{min-height:46px;flex:1 1 auto;font-size:15px}
+  .dlg{width:100vw;max-height:100dvh;border-radius:0;padding:16px}
+  #sigFonts{grid-template-columns:1fr}
+  #tmodal .dlg,#amodal .dlg{width:100vw}
+}

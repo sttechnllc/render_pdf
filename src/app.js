@@ -1661,7 +1661,7 @@ function setZoom(z, fit) {
 }
 function fitWidth(silent) {
   const maxW = Math.max(...S.pages.map(p => dims(p).w), 1);
-  const z = Math.min(1.6, Math.max(0.3, ($('#view').clientWidth - 60) / maxW));
+  const z = Math.min(1.6, Math.max(0.3, ($('#view').clientWidth - (innerWidth <= 760 ? 18 : 60)) / maxW));
   if (silent) { S.zoom = z; S.zoomed = false; } else setZoom(z, true);
 }
 $('#bZoomIn').onclick = () => setZoom(S.zoom * 1.2);
@@ -2025,13 +2025,18 @@ function openSearch() {
 $('#bFind').onclick = openSearch;
 
 /* ---------------- side panel tabs + contents (index) ---------------- */
+const PHONE = matchMedia('(max-width:760px)');
 function setSide(open) {
   $('#side').classList.toggle('collapsed', !open); $('#bSide').classList.toggle('on', open);
-  try { localStorage.setItem('pdfeditor.side', open ? '1' : '0'); } catch { }
+  if (!PHONE.matches) try { localStorage.setItem('pdfeditor.side', open ? '1' : '0'); } catch { }
   if (S.pages.length && !S.zoomed) setTimeout(() => fitWidth(), 30);
 }
 $('#bSide').onclick = () => setSide($('#side').classList.contains('collapsed'));
-try { setSide(localStorage.getItem('pdfeditor.side') !== '0'); } catch { setSide(true); }
+try { setSide(!PHONE.matches && localStorage.getItem('pdfeditor.side') !== '0'); } catch { setSide(true); }
+PHONE.addEventListener('change', () => { if (PHONE.matches) setSide(false); });
+// phones: the panel floats over the page, so a tap on the page (or picking a page) closes it
+$('#view').addEventListener('pointerdown', () => { if (PHONE.matches && !$('#side').classList.contains('collapsed')) setSide(false); }, true);
+$('#thumbs').addEventListener('click', e => { if (PHONE.matches && e.target.closest('.thumb')) setSide(false); });
 function showSideTab(t) {
   if ($('#side').classList.contains('collapsed')) setSide(true);
   $$('#sideTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
