@@ -4,6 +4,8 @@
    email carries the file between people, and the signing page is the web version on GitHub Pages. */
 
 const SIGN_URL = 'https://sttechnllc.github.io/render_pdf/?sign';
+// Document host (cloud/worker.js). Empty = email attachments only.
+const SIGN_HOST = '';
 const SIGNER_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 const FIELD_TYPES = {
   signature: { label: 'Signature', icon: '✍', w: 170, h: 44 },
@@ -103,17 +105,22 @@ async function buildSignedPdf(req) {
 
 /* ---------------- email: attach automatically where possible ---------------- */
 async function sendMail({ to, cc, subject, body, name, bytes }) {
+  if (!bytes) { mailto(to, cc, subject, body); return 'link'; } // hosted: the email only carries the link
   const payload = async () => ({ to, cc: cc || '', subject, body, name, b64: await toB64(bytes) });
   const u = helperUrl('mail');
   if (u) { try { const r = await (await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(await payload()) })).json(); if (r.ok) return 'attached'; } catch { } }
   if (NATIVE) { try { if (await nativeCall('mail', await payload())) return 'attached'; } catch { } }
+  mailto(to, cc, subject, body);
+  return 'manual';
+}
+function mailto(to, cc, subject, body) {
   const a = el('a');
   a.href = `mailto:${encodeURIComponent(to)}?${cc ? 'cc=' + encodeURIComponent(cc) + '&' : ''}subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   document.body.append(a); a.click(); a.remove();
-  return 'manual';
 }
 function mailDone(how, name) {
-  if (how === 'attached') toast('Your email is ready with the PDF attached – press Send.', 6000);
+  if (how === 'link') toast('Your email is ready with the signing link – press Send.', 6000);
+  else if (how === 'attached') toast('Your email is ready with the PDF attached – press Send.', 6000);
   else infoBox('📧 One more step', `Your email program opened with the message ready.<br><br><b>Attach the file "${escHtml(name)}"</b> (you just saved it) and press Send.<br><br><span class="muted">Tip: with classic Outlook, Thunderbird or Apple Mail the file is attached for you automatically.</span>`);
 }
 function infoBox(title, html) {
@@ -121,6 +128,38 @@ function infoBox(title, html) {
   $('#tTitle').textContent = title; $('#tBack').hidden = true; $('#tRun').hidden = true;
   $('#tBody').innerHTML = `<div class="signinfo">${html}</div>`;
 }
+
+/* ---------------- hosted documents (end-to-end encrypted) ---------------- */
+// The PDF is encrypted here with a random key that only travels after the # in the link,
+// so the host stores a file it cannot read. Anyone with the link can open and sign it.
+const u64 = a => btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const un64 = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const rnd = n => u64(crypto.getRandomValues(new Uint8Array(n)));
+const newCloud = () => SIGN_HOST ? { id: rnd(16), k: rnd(32), w: rnd(24) } : null;
+const cloudLink = c => `${SIGN_URL}&d=${c.id}#${c.k}`;
+const cloudKey = k => crypto.subtle.importKey('raw', un64(k), 'AES-GCM', false, ['encrypt', 'decrypt']);
+async function cloudPut(c, bytes) {
+  if (!SIGN_HOST || !c) return false;
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await cloudKey(c.k), bytes));
+    const body = new Uint8Array(12 + ct.length); body.set(iv); body.set(ct, 12);
+    return (await fetch(`${SIGN_HOST}/d/${c.id}`, { method: 'PUT', headers: { 'X-Write': c.w }, body })).ok;
+  } catch { return false; }
+}
+async function cloudGet(id, k) {
+  const r = await fetch(`${SIGN_HOST}/d/${id}`, { cache: 'no-store' });
+  if (!r.ok) throw new Error(r.status === 404 ? 'This document has expired or was removed.' : 'Could not download the document.');
+  const b = new Uint8Array(await r.arrayBuffer());
+  try { return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.slice(0, 12) }, await cloudKey(k), b.slice(12))); }
+  catch { throw new Error('This link is incomplete – open it exactly as it appears in the email.'); }
+}
+const mailText = (to, how, from) => `Hi ${to},\n\n${how}\n\n${from}`;
+const linkSteps = (link, title) => `Click this link to open "${title}" and sign it in your browser – nothing to install, no account needed:\n${link}\n\nFollow the yellow fields and click Finish.`;
+const fileSteps = name => `1. Save the attached PDF ("${name}").
+2. Open this link to sign it in your browser – nothing to install, no account needed:
+   ${SIGN_URL}
+3. Drop the PDF onto the page, click "Start signing", follow the yellow fields, and click Finish.`;
 
 /* ---------------- preparing a request (sender) ---------------- */
 function draft() {
@@ -221,7 +260,7 @@ async function sendForSigning() {
     v: 1, id: crypto.randomUUID ? crypto.randomUUID() : nid(), title: (d.title || baseName()).trim(), created: new Date().toISOString(),
     from: { ...d.from }, signers: d.signers.map(s => ({ id: s.id, name: s.name.trim(), email: s.email, color: s.color })),
     fields: fields.map(({ pi, a }) => ({ id: a.id, signer: a.signer, page: pi, type: a.ftype, x: +a.x.toFixed(2), y: +a.y.toFixed(2), w: +a.w.toFixed(2), h: +a.h.toFixed(2) })),
-    steps: [],
+    steps: [], cloud: newCloud(),
   };
   toast('Preparing the document…');
   const bytes = await buildSignedPdf(req), name = `${req.title} - please sign.pdf`;
@@ -234,21 +273,11 @@ async function sendForSigning() {
     if (SG.req && nextSigner(SG.req)?.id === first.id) { startSigning(); toast('Your turn – fill in your fields, then press Finish.', 5000); }
     return;
   }
-  if (!(await saveAny(bytes, name))) return;
-  const how = await sendMail({ to: first.email, subject: `Please sign: ${req.title}`, name, bytes, body:
-`Hi ${first.name},
-
-${req.from.name} has sent you "${req.title}" to sign.
-
-1. Save the attached PDF ("${name}").
-2. Open this link to sign it in your browser – nothing to install, no account needed:
-   ${SIGN_URL}
-3. Drop the PDF onto the page, click "Start signing", follow the yellow fields, and click Finish.
-
-When you finish, your email opens with the signed copy ready to send back.
-
-Thank you,
-${req.from.name}` });
+  const hosted = await cloudPut(req.cloud, bytes);
+  if (!hosted) { if (req.cloud) toast('Could not upload – sending the PDF as an attachment instead.', 5000); if (!(await saveAny(bytes, name))) return; }
+  const how = await sendMail({ to: first.email, subject: `Please sign: ${req.title}`, name, bytes: hosted ? null : bytes,
+    body: mailText(first.name, `${req.from.name} has sent you "${req.title}" to sign.\n\n` + (hosted ? linkSteps(cloudLink(req.cloud), req.title)
+      : fileSteps(name) + '\n\nWhen you finish, your email opens with the signed copy ready to send back.'), `Thank you,\n${req.from.name}`) });
   mailDone(how, name);
   S.dirty = false; updateTitle();
 }
@@ -394,47 +423,29 @@ async function completeSigning() {
   toast('Signing…');
   const bytes = await buildSignedPdf(r), next = nextSigner(r);
   const name = `${r.title} - signed by ${me.name}.pdf`;
-  if (!(await saveAny(bytes, name))) { toast('Not saved – you can press Finish again.'); r.steps.pop(); return; }
+  const hosted = await cloudPut(r.cloud, bytes), link = hosted && cloudLink(r.cloud);
+  if (r.cloud && !hosted) toast('Could not upload – the signed PDF will be attached instead.', 5000);
+  // hosted: the next signer gets the link, so a local copy is only saved once everyone has signed
+  if ((!hosted || !next) && !(await saveAny(bytes, name)) && !hosted) { toast('Not saved – you can press Finish again.'); r.steps.pop(); return; }
   S.dirty = false; updateTitle(); SG.received = await sha256(bytes); SG.ok = true;
   if (!next && isSender(r, me)) { renderSignBar(); renderSignPane(); return toast('✔ Signed & saved – everyone has signed.', 5000); }
   if (next && isMe(next) && isSender(r, next)) { renderSignBar(); renderSignPane(); return toast('Saved – it\'s your turn next: press "Sign now".', 5000); }
   const how = next
-    ? await sendMail({ to: next.email, cc: r.from.email, subject: `Please sign: ${r.title}`, name, bytes, body:
-`Hi ${next.name},
-
-${me.name} has signed "${r.title}" and it's your turn.
-
-1. Save the attached PDF ("${name}").
-2. Open this link to sign it in your browser – nothing to install, no account needed:
-   ${SIGN_URL}
-3. Drop the PDF onto the page, click "Start signing", follow the yellow fields, and click Finish.
-
-Thank you,
-${me.name} (on behalf of ${r.from.name})` })
-    : await sendMail({ to: r.from.email, cc: r.signers.filter(s => s.id !== me.id).map(s => s.email).join(','), subject: `Completed: ${r.title}`, name, bytes, body:
-`Hi ${r.from.name},
-
-"${r.title}" has now been signed by everyone (${r.steps.map(s => s.name).join(', ')}).
-The completed PDF is attached – it includes a certificate page with the signing details.
-
-${me.name}` });
+    ? await sendMail({ to: next.email, cc: r.from.email, subject: `Please sign: ${r.title}`, name, bytes: hosted ? null : bytes,
+        body: mailText(next.name, `${me.name} has signed "${r.title}" and it's your turn.\n\n` + (hosted ? linkSteps(link, r.title) : fileSteps(name)), `Thank you,\n${me.name} (on behalf of ${r.from.name})`) })
+    : await sendMail({ to: r.from.email, cc: r.signers.filter(s => s.id !== me.id).map(s => s.email).join(','), subject: `Completed: ${r.title}`, name, bytes: hosted ? null : bytes,
+        body: mailText(r.from.name, `"${r.title}" has now been signed by everyone (${r.steps.map(s => s.name).join(', ')}).\n` + (hosted
+          ? `Download the completed PDF (with its certificate page) here – the link works for 30 days:\n${link}\n\nOpen it and press Save.`
+          : 'The completed PDF is attached – it includes a certificate page with the signing details.'), me.name) });
   renderSignBar(); renderSignPane();
   mailDone(how, name);
 }
 async function forwardTo(next) {
   const r = SG.req, bytes = S.sources[S.pages[0].src].bytes, name = `${r.title} - please sign.pdf`;
-  if (!(await saveAny(bytes, name))) return;
-  mailDone(await sendMail({ to: next.email, subject: `Please sign: ${r.title}`, name, bytes, body:
-`Hi ${next.name},
-
-Please sign "${r.title}".
-
-1. Save the attached PDF.
-2. Open ${SIGN_URL} and drop the PDF onto the page.
-3. Click "Start signing", follow the yellow fields, and click Finish.
-
-Thank you,
-${r.from.name}` }), name);
+  const hosted = await cloudPut(r.cloud, bytes);
+  if (!hosted && !(await saveAny(bytes, name))) return;
+  mailDone(await sendMail({ to: next.email, subject: `Please sign: ${r.title}`, name, bytes: hosted ? null : bytes,
+    body: mailText(next.name, `Please sign "${r.title}".\n\n` + (hosted ? linkSteps(cloudLink(r.cloud), r.title) : fileSteps(name)), `Thank you,\n${r.from.name}`) }), name);
 }
 
 /* ---------------- wiring ---------------- */
@@ -444,4 +455,11 @@ if (/[?&]sign\b/.test(location.search)) {
   const h = $('#empty h1'); if (h) h.textContent = 'Sign a document';
   const p = $('#empty .drop p'); if (p) p.innerHTML = '<b>Drop the PDF you were asked to sign here</b><br><span class="muted">(the file attached to the email)</span>';
   $('#eOpen').textContent = 'Choose the PDF…';
+  // opened from a signing link: download and open the document straight away
+  const id = new URLSearchParams(location.search).get('d'), k = location.hash.slice(1);
+  if (id && SIGN_HOST) {
+    if (p) p.innerHTML = '<b>Opening your document…</b>';
+    cloudGet(id, k).then(b => openFiles([new File([b], 'Document to sign.pdf', { type: 'application/pdf' })]))
+      .catch(e => { if (p) p.innerHTML = `<b>${escHtml(e.message)}</b><br><span class="muted">If the PDF was attached to the email, you can drop it here instead.</span>`; });
+  }
 }

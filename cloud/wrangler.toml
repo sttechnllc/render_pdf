@@ -1,0 +1,15 @@
+name = "render-pdf-sign"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# Free storage, no card needed. Create it once with:  npx wrangler kv namespace create DOCS
+# and paste the id it prints here.
+[[kv_namespaces]]
+binding = "DOCS"
+id = "REPLACE_WITH_KV_ID"
+
+# To scale later (10 GB free, bigger files): create a bucket with  npx wrangler r2 bucket create render-pdf-sign
+# and uncomment these lines. The worker uses R2 automatically when it is bound.
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "render-pdf-sign"
