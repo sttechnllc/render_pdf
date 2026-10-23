@@ -6,7 +6,7 @@ compatibility_date = "2026-10-01"
 # and paste the id it prints here.
 [[kv_namespaces]]
 binding = "DOCS"
-id = "REPLACE_WITH_KV_ID"
+id = "2091e7c9b93941f78d22ab962b09a69b"
 
 # To scale later (10 GB free, bigger files): create a bucket with  npx wrangler r2 bucket create render-pdf-sign
 # and uncomment these lines. The worker uses R2 automatically when it is bound.

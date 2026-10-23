@@ -5,7 +5,7 @@
 
 const SIGN_URL = 'https://sttechnllc.github.io/render_pdf/?sign';
 // Document host (cloud/worker.js). Empty = email attachments only.
-const SIGN_HOST = '';
+const SIGN_HOST = 'https://render-pdf-sign.mpeters-44f.workers.dev';
 const SIGNER_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 const FIELD_TYPES = {
   signature: { label: 'Signature', icon: '✍', w: 170, h: 44 },
