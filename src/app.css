@@ -312,3 +312,9 @@ input.ff[type=checkbox],input.ff[type=radio]{accent-color:var(--accent)}
 .ofilter input{flex:1;min-width:160px}
 .owarn{color:#b45309;cursor:help}
 .onewb{display:inline-block;padding:0 5px;border-radius:5px;font-size:10px;background:#dbe6fd;color:#1e3a8a;font-weight:600}
+
+/* the top bars never shrink (Safari/WebKit squashed them over the side panel and blocked its buttons) */
+body>*:not(main){flex:none}
+#side{flex:none;min-width:0;overflow:hidden}
+#sideTabs button{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sidehead{flex-wrap:wrap}
