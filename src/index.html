@@ -139,6 +139,7 @@
       <div class="drop">
                 <img class="logo" src="../launcher/icon-256.png" alt=""><h1>Mark's Render PDF Editor</h1>
         <p>Drop a PDF here</p>
+        <p class="muted small">Pictures and Word documents (.docx) work too – they open as a PDF.</p>
         <p>or</p>
         <button id="eOpen" class="pri big-btn">Open a PDF</button>
         <button id="eBlank" class="big-btn">Start with a blank page</button>
@@ -235,8 +236,8 @@
 </div>
 
 <div id="toast"></div>
-<input type="file" id="fOpen" accept=".pdf,application/pdf,image/*" hidden>
-<input type="file" id="fAdd" accept=".pdf,application/pdf,image/*" multiple hidden>
+<input type="file" id="fOpen" accept=".pdf,application/pdf,image/*,.docx,.docm,.dotx,.doc,.rtf,.odt" hidden>
+<input type="file" id="fAdd" accept=".pdf,application/pdf,image/*,.docx,.docm,.dotx,.doc,.rtf,.odt" multiple hidden>
 <input type="file" id="fImg" accept="image/*" hidden>
 <input type="file" id="fSig" accept="image/*" hidden>
 
@@ -248,5 +249,6 @@
 <script src="tools.js"></script>
 <script src="sign.js"></script>
 <script src="organize.js"></script>
+<script src="word.js"></script>
 </body>
 </html>

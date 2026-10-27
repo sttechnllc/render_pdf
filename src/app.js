@@ -167,8 +167,9 @@ async function filesToPages(files) {
     try {
       if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) out.push(...await loadPdf(new Uint8Array(await readFile(f)), f.name));
       else if (f.type.startsWith('image/')) out.push(await imagePage(f));
-      else toast(`Skipped "${f.name}" – not a PDF or image.`);
-    } catch (e) { console.error(e); }
+      else if (typeof isWordFile === 'function' && isWordFile(f)) out.push(...await loadPdf(await wordToPdf(f), f.name.replace(/\.[^.]+$/, '.pdf')));
+      else toast(`Skipped "${f.name}" – not a PDF, picture or Word document.`);
+    } catch (e) { console.error(e); if (isWordFile?.(f)) toast(e.message, 7000); }
   }
   return out;
 }
