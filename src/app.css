@@ -344,3 +344,16 @@ body>*:not(main){flex:none}
   #sigFonts{grid-template-columns:1fr}
   #tmodal .dlg,#amodal .dlg{width:100vw}
 }
+
+/* document tabs */
+#tabs{display:flex;align-items:flex-end;gap:2px;padding:4px 8px 0;background:#e6e9ee;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+#tabs[hidden]{display:none}
+.tab{display:flex;align-items:center;gap:6px;max-width:220px;padding:5px 6px 5px 12px;border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0;background:#f4f6f9;color:var(--muted);cursor:pointer;flex:none;font-size:13px}
+.tab:hover{background:#fff}
+.tab.on{background:#fff;color:var(--text);font-weight:600;margin-bottom:-1px;padding-bottom:6px}
+.tab .tn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab .tx{border:0;background:none;padding:1px 6px;border-radius:5px;font-size:12px;color:var(--muted);min-height:0}
+.tab .tx:hover{background:#fde2e2;color:var(--danger)}
+.tadd{border:0;background:none;padding:4px 10px;font-size:15px;color:var(--muted);align-self:center}
+#sideX{flex:none !important;padding:8px 10px !important;color:var(--muted)}
+#sideX:hover{color:var(--danger)}

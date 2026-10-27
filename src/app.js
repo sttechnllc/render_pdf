@@ -109,7 +109,7 @@ function download(bytes, name, type = 'application/pdf') {
 }
 
 /* ---------------- undo ---------------- */
-function updateTitle() { document.title = (S.dirty ? '• ' : '') + S.name + " – Mark's Render PDF Editor"; }
+function updateTitle() { document.title = (S.dirty ? '• ' : '') + S.name + " – Mark's Render PDF Editor"; if (typeof TABS !== 'undefined') renderTabs(); }
 function snap() {
   S.undo.push(JSON.stringify({ p: S.pages, f: S.forms }));
   let tot = 0; // keep undo history under ~100 MB and 150 steps
@@ -172,13 +172,15 @@ async function filesToPages(files) {
   }
   return out;
 }
-async function openFiles(files) {
+// every opened file gets its own tab; opts.replace closes the current tab once the new one is open
+async function openFiles(files, opts = {}) {
   files = [...files]; if (!files.length) return;
-  if (S.dirty && S.pages.length && !confirm('Discard your unsaved changes and open a new file?')) return;
   const firstNew = S.sources.length;
   const pages = await filesToPages(files);
   if (!pages.length) return;
-  for (let i = 0; i < firstNew; i++) freeSource(i);
+  const old = TABS.cur;
+  tabNew(firstNew);
+  if (opts.replace && old >= 0) tabDrop(old);
   thumbCache.clear(); findCache.clear(); contentsFor = null;
   if (typeof SR !== 'undefined') { SR.results = []; SR.byPage.clear(); $('#sResults').innerHTML = ''; $('#sStatus').textContent = ''; }
   S.images = {}; S.imageIds = {}; S.clip = null;
@@ -202,6 +204,7 @@ async function addFiles(files, at = S.pages.length) {
   if (!S.pages.length) return openFiles(files);
   const pages = await filesToPages(files);
   if (!pages.length) return;
+  const t = TABS.list[TABS.cur]; if (t) for (let i = t.srcTo; i < S.sources.length; i++) t.srcs.add(i);
   snap(); S.pages.splice(at, 0, ...pages); refreshAll();
   toast(`Added ${pages.length} page${pages.length > 1 ? 's' : ''}.`);
 }
@@ -212,14 +215,85 @@ function freeSource(i) {
   delete libCache[i]; S.sources[i] = null;
 }
 function newBlank() {
-  if (S.dirty && S.pages.length && !confirm('Discard your unsaved changes and start a new blank document?')) return;
-  S.sources.forEach((_, i) => freeSource(i));
+  tabNew(S.sources.length);
   thumbCache.clear(); findCache.clear(); contentsFor = null; resetSearch('');
   S.images = {}; S.imageIds = {}; S.clip = null; S.sel = null; S.selPages.clear(); S.current = 0;
   S.fileHandle = null; S.forms = {}; S.formsDirty = {};
   S.pages = [{ id: nid(), src: -1, idx: 0, baseRot: 0, rot: 0, w: 612, h: 792, annots: [] }];
   S.undo = []; S.redo = []; S.name = 'document.pdf'; S.dirty = true; updateTitle(); fitWidth(true); refreshAll();
   if (typeof signOnOpen === 'function') signOnOpen();
+}
+
+/* ---------------- document tabs ---------------- */
+// Each tab keeps its own pages, undo history and file; the shared pdf sources are freed when the tab closes.
+const TABS = { list: [], cur: -1 };
+const DOC_KEYS = ['pages', 'images', 'imageIds', 'undo', 'redo', 'name', 'dirty', 'fileHandle', 'forms', 'formsDirty', 'meta', 'current', 'zoom', 'zoomed', 'selPages', 'clip', 'rev'];
+const SG_KEYS = ['req', 'mode', 'me', 'received', 'ok', 'method', 'active', 'ftype', 'draft'];
+function tabSave() {
+  const t = TABS.list[TABS.cur]; if (!t) return;
+  if (typeof commitEditing === 'function') commitEditing();
+  DOC_KEYS.forEach(k => t.s[k] = S[k]);
+  if (typeof SG !== 'undefined') t.sg = Object.fromEntries(SG_KEYS.map(k => [k, SG[k]]));
+  t.scroll = $('#view').scrollTop; t.srcTo = S.sources.length;
+}
+// the caller fills S with the new document right after this
+function tabNew(firstSrc) {
+  tabSave();
+  S.selPages = new Set();
+  const t = { id: nid(), s: {}, srcs: new Set(), srcTo: S.sources.length };
+  for (let i = firstSrc; i < S.sources.length; i++) t.srcs.add(i);
+  TABS.list.push(t); TABS.cur = TABS.list.length - 1;
+  queueMicrotask(renderTabs);
+}
+function tabLoad(i) {
+  const t = TABS.list[i]; if (!t) return;
+  TABS.cur = i; S.sel = null;
+  DOC_KEYS.forEach(k => { if (k in t.s) S[k] = t.s[k]; });
+  if (t.sg && typeof SG !== 'undefined') Object.assign(SG, t.sg);
+  thumbCache.clear(); findCache.clear(); contentsFor = null; if (typeof resetSearch === 'function') resetSearch('');
+  updateTitle(); refreshAll(); $('#view').scrollTop = t.scroll || 0;
+  if (typeof renderSignBar === 'function') { renderSignBar(); renderSignPane(); }
+  renderTabs();
+}
+function tabSwitch(i) { if (i === TABS.cur || !TABS.list[i]) return; tabSave(); tabLoad(i); }
+// remove a tab without asking (its sources are freed)
+function tabDrop(i) {
+  const t = TABS.list[i]; if (!t) return;
+  t.srcs.forEach(freeSource);
+  TABS.list.splice(i, 1);
+  if (TABS.cur > i) TABS.cur--; else if (TABS.cur === i) TABS.cur = -1;
+  renderTabs();
+}
+function tabClose(i = TABS.cur) {
+  const t = TABS.list[i]; if (!t) return;
+  if (i === TABS.cur) tabSave();
+  if (t.s.dirty && t.s.pages?.length && !confirm(`Close "${t.s.name}" without saving your changes?`)) return;
+  const wasCur = i === TABS.cur;
+  tabDrop(i);
+  if (!wasCur) return;
+  if (TABS.list.length) return tabLoad(Math.min(i, TABS.list.length - 1));
+  // last tab closed → back to the start screen
+  S.pages = []; S.undo = []; S.redo = []; S.dirty = false; S.sel = null; S.selPages = new Set(); S.name = 'document.pdf'; S.fileHandle = null; S.forms = {}; S.formsDirty = {}; S.meta = null;
+  if (typeof SG !== 'undefined') { SG.req = null; SG.mode = null; SG.draft = null; }
+  thumbCache.clear(); findCache.clear(); contentsFor = null;
+  updateTitle(); refreshAll();
+  if (typeof renderSignBar === 'function') { renderSignBar(); renderSignPane(); }
+}
+function renderTabs() {
+  const bar = $('#tabs'); if (!bar) return;
+  bar.hidden = !TABS.list.length;
+  bar.innerHTML = '';
+  TABS.list.forEach((t, i) => {
+    const cur = i === TABS.cur, name = cur ? S.name : t.s.name, dirty = cur ? S.dirty : t.s.dirty;
+    const b = el('div', 'tab' + (cur ? ' on' : '')); b.title = name;
+    b.innerHTML = `<span class="tn"></span><button class="tx" title="Close">✕</button>`;
+    b.querySelector('.tn').textContent = (dirty ? '• ' : '') + name.replace(/\.pdf$/i, '');
+    b.onclick = e => { if (e.target.closest('.tx')) tabClose(i); else tabSwitch(i); };
+    b.onauxclick = e => { if (e.button === 1) tabClose(i); };
+    bar.append(b);
+  });
+  const plus = el('button', 'tadd'); plus.textContent = '＋'; plus.title = 'Open another file'; plus.onclick = () => $('#bOpen').click();
+  bar.append(plus);
 }
 
 /* ---------------- rendering ---------------- */
@@ -2032,6 +2106,7 @@ function setSide(open) {
   if (S.pages.length && !S.zoomed) setTimeout(() => fitWidth(), 30);
 }
 $('#bSide').onclick = () => setSide($('#side').classList.contains('collapsed'));
+$('#sideX').onclick = () => setSide(false);
 try { setSide(!PHONE.matches && localStorage.getItem('pdfeditor.side') !== '0'); } catch { setSide(true); }
 PHONE.addEventListener('change', () => { if (PHONE.matches) setSide(false); });
 // phones: the panel floats over the page, so a tap on the page (or picking a page) closes it
@@ -2039,13 +2114,13 @@ $('#view').addEventListener('pointerdown', () => { if (PHONE.matches && !$('#sid
 $('#thumbs').addEventListener('click', e => { if (PHONE.matches && e.target.closest('.thumb')) setSide(false); });
 function showSideTab(t) {
   if ($('#side').classList.contains('collapsed')) setSide(true);
-  $$('#sideTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $$('#sideTabs button[data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   $$('.pane').forEach(p => p.hidden = p.dataset.t !== t);
   $('#side').classList.toggle('wide', t !== 'pages');
   if (t === 'contents') buildContents();
   if (t === 'sign' && typeof renderSignPane === 'function') renderSignPane();
 }
-$$('#sideTabs button').forEach(b => b.onclick = () => showSideTab(b.dataset.t));
+$$('#sideTabs button[data-t]').forEach(b => b.onclick = () => showSideTab(b.dataset.t));
 
 let contentsFor = null;
 async function buildContents(force) {
@@ -2504,7 +2579,8 @@ addEventListener('dragover', e => { e.preventDefault(); document.body.classList.
 addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
 addEventListener('drop', e => {
   e.preventDefault(); document.body.classList.remove('dragging');
-  if (e.dataTransfer.files.length) S.pages.length ? addFiles(e.dataTransfer.files) : openFiles(e.dataTransfer.files);
+  // dropped on the page area: opens in a new tab (drop onto the page list to insert pages instead)
+  if (e.dataTransfer.files.length) openFiles(e.dataTransfer.files);
 });
 
 addEventListener('keydown', e => {
@@ -2559,7 +2635,7 @@ addEventListener('keydown', e => {
     renderAnnots(f.p);
   }
 });
-addEventListener('beforeunload', e => { if (S.dirty && S.pages.length) { e.preventDefault(); e.returnValue = ''; } });
+addEventListener('beforeunload', e => { tabSave(); if (TABS.list.some(t => t.s.dirty && t.s.pages?.length)) { e.preventDefault(); e.returnValue = ''; } });
 addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(() => { if (S.pages.length && !S.zoomed) fitWidth(); }, 250); });
 
 setTool('select'); updateButtons();

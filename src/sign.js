@@ -268,7 +268,7 @@ async function sendForSigning() {
   if (isSender(req, first)) {
     // the sender signs first: do it right here instead of emailing themselves
     S.dirty = false;
-    await openFiles([new File([bytes], name, { type: 'application/pdf' })]);
+    await openFiles([new File([bytes], name, { type: 'application/pdf' })], { replace: true });
     for (let i = 0; i < 50 && !SG.req; i++) await new Promise(r => setTimeout(r, 100)); // the request is read just after the file opens
     if (SG.req && nextSigner(SG.req)?.id === first.id) { startSigning(); toast('Your turn – fill in your fields, then press Finish.', 5000); }
     return;
